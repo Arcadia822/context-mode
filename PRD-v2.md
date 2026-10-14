@@ -1,7 +1,7 @@
 # context-mode v2.0 — PRD
 
 - Status: draft, open decisions G1–G10 in §11 (grill)
-- Date: 2026-10-12 · Owner: Mert · Branch: `next`
+- Date: 2026-10-12 · Owner: Mert · Branch: `v2` (renamed from `next` on 2026-10-14)
 - Inputs: `tickets/v2-decisions.md` (D1–D18), `tickets/v2-issue-map.md` (173 open issues, 178 open PRs, per-item class + contract test)
 
 ## 1. Goal
@@ -277,3 +277,15 @@ Answer — three fixed scopes, no knob:
 
 ### 15.5 Change 2026-10-13: Antigravity/agy removed
 Reason (spike-hooks-verified.md): no SessionStart, no UserPromptSubmit, PostToolUse carries no tool output, current hooks config rejected (#1206). v2.0 agents = 10: Claude Code, Codex CLI, Gemini CLI, Qwen Code, Copilot CLI, VS Code Copilot, Kiro, ZCode, Pi, OpenCode 2. Lines above that list agy are superseded.
+
+## 16. Round 3 changes (2026-10-14)
+
+Each line supersedes the matching earlier PRD text.
+
+- **Branch:** development on `v2`, built output on `release`, `main` frozen on v1 (ADR-0011).
+- **MCP:** server targets spec 2026-07-28 and still answers 2025-xx `initialize` clients (ADR-0007).
+- **Enforcement (replaces D10 "hints only"):** PreToolUse rewrites flood-prone commands to run through the sandbox wrapper; PostToolUse caps oversized output and indexes the rest; deny only from the user's policy (ADR-0008).
+- **Compaction (changes D9):** one session-keyed state block ≤ 2 KB after compaction, per-agent path; resume = hint line; no injected memory, no role/intent classifier (ADR-0009).
+- **Tools (replaces G4 "doctor/upgrade removed"):** 9 tools — ctx_execute, ctx_batch, ctx_index, ctx_search, ctx_resume, ctx_stats, ctx_doctor, ctx_upgrade, ctx_purge. User commands as skills: /ctx-stats, /ctx-doctor, /ctx-upgrade (ADR-0010, TECH-SPEC §3.9).
+- **v1 users:** no data migration; doctor detects v1 leftovers, upgrade removes them (ADR-0011).
+- **Live E2E:** by hand + RC tags only, no nightly; 6 required agents, 3 tier-2, VS Code contract-only (TECH-SPEC §6.9).

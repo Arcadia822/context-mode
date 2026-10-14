@@ -32,7 +32,7 @@ v2.0.0 is released only when **all** of these hold. Each one is checked by a mac
 | ID | Criterion | Check |
 |---|---|---|
 | GS1 | GP1–GP11 pass on macOS, Linux and Windows | per-PR CI (§6.6) |
-| GS2 | GP-LIVE-ROUTING passes its thresholds (§6.5) for Claude Code on Opus, Sonnet and Haiku, and on each agent whose CLI can run headless in CI | release job |
+| GS2 | GP-LIVE-ROUTING passes its thresholds (§6.5) on the 6 required agents (§6.9); tier-2 agents pass or carry a written reason; VS Code passes the contract E2E | RC job |
 | GS3 | G25 is answered: do hooks fire for MCP tools on Copilot CLI, ZCode, Pi and OpenCode 2 (GP-LIVE-HOOKS) | release job |
 | GS4 | v1 `tests/` is deleted; every row of `tickets/v2-test-ledger.md` has a verdict; no file under `e2e/` imports `src/` | CI lint + ledger script |
 | GS5 | The repo has no `SKILL.md`, no removed-agent path (§3.10) and no `AGENTS.md`, `GEMINI.md`, `QWEN.md`, `CLAUDE.md`, `SYSTEM.md` or `copilot-instructions.md`; `lint.mjs` passes on the built `initialize` + `tools/list` | GP2 |
@@ -56,6 +56,10 @@ PRD lines this spec supersedes. They are kept in the PRD for history.
 | §13 contract tests as `test/contract/<n>.test.ts`; "adapter conformance" | ADR-0003 and §6 here |
 | §14 M3 list (Cursor, Kimi, JetBrains, agy, Zed) | §2 here |
 | §10 E3 / §7: `ctx_search` default `project` | conflicts with README §8 (`worktree`, #1185) → Q6 |
+
+## 2b. New ADRs from round 3 (2026-10-14)
+
+- ADR-0007 MCP 2026-07-28 · ADR-0008 enforcement (rewrite + cap) · ADR-0009 compaction + memory · ADR-0010 doctor + upgrade · ADR-0011 branches, release, v1 cleanup, metrics. Evidence: `tickets/round3-evidence.json`.
 
 ## 3. Prompt delivery (ADR-0004, ADR-0005, ADR-0006)
 
@@ -272,7 +276,7 @@ Proposed test runner: `node:test`. The tests run against built `.mjs` files, so 
 | Layer | Runs | Model | Deterministic | Where |
 |---|---|---|---|---|
 | E2E-style (GP1–GP10) | every PR, 3 OS | none | yes | `e2e/cases` |
-| E2E-live (GP-LIVE-ROUTING, GP-LIVE-HOOKS) | nightly + release candidate | real | no; thresholds | `e2e/live` |
+| E2E-live (GP-LIVE-ROUTING, GP-LIVE-HOOKS) | by hand (`workflow_dispatch`) + release-candidate tags `v*-rc*`; **no cron** | real | no; thresholds | `e2e/live` |
 
 Hard rule: no test imports `src/`. Inputs and outputs are processes, stdio, files and env only.
 
@@ -329,7 +333,7 @@ Hard rule: no test imports `src/`. Inputs and outputs are processes, stdio, file
 
 - **[P] Per PR:** macOS, Linux, Windows × the minimum Node version and the current Node version. The minimum is S-NODE (§9).
 - **[P] Budget:** ≤ 10 minutes wall-clock per OS.
-- **Nightly:** E2E-live.
+- **E2E-live:** no schedule. See §6.9.
 
 ### 6.7 Performance budgets
 
@@ -343,6 +347,27 @@ Hard rule: no test imports `src/`. Inputs and outputs are processes, stdio, file
 - Suggested buckets by title keywords (review needed): REMOVED 56 · GP4 44 · UNASSIGNED 22 · GP8 21 · GP3 19 · GP1 17 · GP9 16 · GP6 13 · GP5 7 · GP7 3 · not an issue 3.
 - Each row gets exactly one verdict: `GPn/<case>`, `REMOVED:<ADR|G|E id>`, or `N/A`.
 - v1 `tests/` (210 files, 81,072 lines; 136 import `../src/`; 64 start processes) is deleted in one commit, only when no row is empty and GS1 holds.
+
+### 6.9 Live E2E job (`live-e2e.yml`) [D: no nightly]
+
+Triggers: `workflow_dispatch` (input: which agents) and `push: tags: ['v*-rc*']`. Keys live in a GitHub environment with required reviewers. Models are pinned; `--max-budget-usd` is set where the CLI has it.
+
+Each matrix cell (ubuntu-latest, one agent): install a pinned agent version → write config only to temp dirs → run `e2e/live/routing-tasks.json` (10 small + 10 large) and the G25 hook probe → parse the event stream (first non-ToolSearch tool, answer, bytes returned) → check §6.5 thresholds → upload raw JSONL.
+
+| Agent | Tier | Headless command (from docs/source) | Auth secret | Temp config |
+|---|---|---|---|---|
+| Claude Code (Opus, Sonnet, Haiku) | required | `claude -p --output-format stream-json --verbose --plugin-dir <build> --strict-mcp-config --include-hook-events --max-budget-usd 0.5 --no-session-persistence` | ANTHROPIC_API_KEY | `--plugin-dir` |
+| Codex CLI | required | `codex exec --json --skip-git-repo-check --ephemeral` | OPENAI_API_KEY | temp CODEX_HOME with hooks.json + config.toml `[features] hooks = true` |
+| Gemini CLI | required | `gemini -p --output-format stream-json --yolo --allowed-mcp-server-names context-mode` | GEMINI_API_KEY | GEMINI_CLI_HOME |
+| Qwen Code | required | `qwen -p --output-format stream-json --yolo` | provider key (free OAuth tier is gone) | QWEN_HOME |
+| Copilot CLI | required | `copilot -p --output-format json --allow-all-tools --additional-mcp-config @cm.json` | COPILOT_GITHUB_TOKEN (fine-grained PAT, Copilot Requests; CI GITHUB_TOKEN does not work) | flag |
+| Pi | required | `pi -p --mode json --no-session -e <build>/pi-extension.js` | ANTHROPIC_API_KEY | `-e` |
+| Kiro | tier 2 | `kiro-cli chat --v3 --no-interactive --trust-all-tools --require-mcp-startup --output-format stream-json` | KIRO_API_KEY (paid plan only) | path open |
+| OpenCode 2 | tier 2 | `opencode run --format json --dangerously-skip-permissions` | provider key | OPENCODE_CONFIG_CONTENT; npm `latest` is 1.19.0, try `opencode-ai@dev` |
+| ZCode | tier 2 | `zcode --prompt --output-format stream-json` | ZCode credential | project-root `zcode.json`; no published Linux CLI, build `apps/zcode-cli` |
+| VS Code Copilot | contract only | no headless model turn exists outside microsoft's own harness | — | covered by Copilot CLI live run + hook-payload fixture E2E |
+
+Only Claude Code and Codex were run locally; the other rows come from source and docs and get one dry run when the job is built. Size: about 220 sessions per RC run (Claude 3 × 20 + 8 agents × 20); the pilot cost about $0.08 per Opus session, so measure one run before fixing a budget.
 
 ## 7. Data and evidence files
 
@@ -385,7 +410,7 @@ Hard rule: no test imports `src/`. Inputs and outputs are processes, stdio, file
 | Q5 | Budgets: instructions ≤ 2,048 chars; each description ≤ 1,024; descriptions + schemas ≤ 8,000 | **[D]** |
 | Q6 | **`ctx_search` default scope = `worktree`** (PRD E3 superseded) | **[D]** |
 | Q7 | Pi: same `instructions.md` bytes via `before_agent_start` | **[D]** |
-| Q8 | E2E-live nightly + release candidate | **[D]** |
+| Q8 | E2E-live only by hand + on RC tags, never nightly (owner, 2026-10-14) | **[D]** |
 | Q9 | **Test runner = `node:test`**; matrix 3 OS × min/current Node, ≤ 10 min per OS | **[D]** |
 | Q10 | Kiro, ZCode: tool descriptions only | **[D]** |
 | Q11 | **All 10 agents, Codex included, are supported and release-gated by GP-LIVE-ROUTING**; no `AGENTS.md` | **[D]** |

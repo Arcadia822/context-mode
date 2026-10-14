@@ -21,7 +21,7 @@ Most v2 requirements (B rows in the issue map) are contract breaks at a process 
 
 1. **Two layers, and nothing else:**
    - **E2E-style** (every PR, deterministic). The built artifacts (`server.bundle.mjs`, hook entry) run as child processes. A *fake host* drives them over stdio with recorded native payloads. No model is involved.
-   - **E2E-live** (nightly and before every release). A real agent binary and a real model turn, against the real server. Asserts on the transcript and on DB rows.
+   - **E2E-live** (by hand and on release-candidate tags; never on a schedule, TECH-SPEC §6.9). A real agent binary and a real model turn, against the real server. Asserts on the transcript and on DB rows.
 2. **Process-boundary rule:** a test file must not import from `src/`. Its inputs are processes, stdio, files and env; its outputs are the same. CI lint fails on `from "../src` or `from "../../src` under `e2e/`.
 3. **Golden files:** expected outputs and DB rows are JSON files under `e2e/golden/`.
    - Volatile values are normalized before comparison (TECH-SPEC §6.4).
