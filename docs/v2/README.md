@@ -22,7 +22,7 @@ Each statement is marked:
 - No fallback chains: one path per behaviour.
 - Same code on every agent.
 - Claude Code's event model is the canonical contract, and adapters only translate.
-- KISS / YAGNI: no CLI, no skills, no extra commands, no npm.
+- KISS / YAGNI: no CLI, no npm. No feature skills beyond `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade` (§9).
 
 ## 3. Scope
 
@@ -35,6 +35,7 @@ Each statement is marked:
   - OpenClaw: no project source.
   - Antigravity/agy: no SessionStart, no UserPromptSubmit, no tool output in PostToolUse, #1206.
   - OpenCode 1.x.
+- **[D]** Deferred past v2.0 GA (D14, new-adapter requests, no prior code history): DeepSeek Harness (#1258), Devin CLI (#957).
 - **[O]** OMP (G20): there are 8 issues in total, 5 of them open, all removed by v2 decisions. Recommended: remove.
 - **[D]** Statusline, `ctx_insight` and the pricing catalog are removed. Stats show bytes and tokens only.
 
@@ -44,15 +45,28 @@ Each statement is marked:
 - Codex and Pi detect updates by **commit**, not by tag. So every release must be a new commit on `release`, and the Codex `plugin.json` version must go up. (spike-distribution-verified)
 - Pi runs npm whenever a `package.json` exists, so the `release` branch must not have one.
 - `pi update` runs `git clean -fdx`, so data lives outside the clone.
+- The launcher does not write a node path at install time. It resolves `node` lazily, with a liveness-guard lookup, each time a hook runs. This covers both #1090 (non-versioned node path goes stale) and #841 (mise/asdf/nvm node upgrades break hooks).
 - Install per agent:
 
   | Agent | Command |
   |---|---|
   | Claude Code | marketplace add + install, `ref: "release"` |
-  | Codex CLI | `codex plugin marketplace add … --ref release` (tested live) |
+  | Codex CLI | config.toml entry: `[mcp_servers.context-mode]` pointing at the `release` checkout (no plugin marketplace — avoids #1210, plugin spawns in a cache dir with no `${VAR}` expansion) |
   | Gemini, Qwen | `extensions install <url> --ref release` |
   | Pi | `pi install git:…@release` |
   | OpenCode 2 | `git+https://…#release` |
+  | Copilot CLI | **[O]** `copilot plugin marketplace add o/r` then `copilot plugin install ctx@mkt`, not yet tested live |
+  | VS Code Copilot | **[O]** `/plugin install <git-repo>` in chat (Agent Plugins 1.0), not yet tested live |
+  | Kiro | **[O]** UI only: Powers → Add Custom Power → Import from GitHub, not yet tested live |
+  | ZCode | **[O]** UI: Settings → Plugins → Personal marketplace (Claude Code marketplace format), not yet tested live |
+
+  Codex `config.toml` entry:
+  ```toml
+  [mcp_servers.context-mode]
+  command = "node"
+  args = ["<checkout-path>/release/bin/context-mode.mjs", "mcp"]
+  ```
+  Update = re-run the checkout step and re-write this entry; there is no `plugin.json` version bump for Codex.
 
 ## 5. Project identity [V]
 
@@ -63,6 +77,8 @@ Each statement is marked:
 ## 6. Hooks — 4 canonical events [V, docs-only rows marked in the spike]
 
 SessionStart · UserPromptSubmit · PreToolUse · PostToolUse. Each adapter maps every canonical event to one native event.
+
+PreCompact is not a 5th canonical event. Only 3 of 10 agents fire it (Gemini, Copilot CLI, VS Code), and even there it cannot inject context (ADR-0009): it only sets a pending flag that the next prompt hook reads once. All re-injection after compaction goes through SessionStart(source=compact) instead (§6 gaps, ADR-0009).
 
 Gaps:
 - Gemini, Pi and OpenCode 2 have no hint on allow. On these agents the hint lives only in the tool descriptions.
@@ -98,9 +114,9 @@ Open:
 
 ## 9. Tools [D]
 
-7 tools: `ctx_execute` (absorbs `execute_file`), `ctx_batch`, `ctx_index` (absorbs `fetch_and_index`), `ctx_search`, `ctx_resume`, `ctx_stats`, `ctx_purge`.
+9 tools: `ctx_execute` (absorbs `execute_file`), `ctx_batch`, `ctx_index` (absorbs `fetch_and_index`), `ctx_search`, `ctx_resume`, `ctx_stats`, `ctx_doctor`, `ctx_upgrade`, `ctx_purge` (ADR-0010).
 
-No doctor, upgrade or uninstall commands. Errors explain the fix in one line.
+`ctx_doctor` and `ctx_upgrade` stay, rebuilt for v2: read-only checks, one path per update mode, no fallback. Uninstall is a mode of `ctx_upgrade` (`mode: uninstall`). 3 user commands wrap these as skills: `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade` (disable-model-invocation, each calls one matching tool). Other errors explain the fix in one line, no separate CLI.
 
 ## 10. Migration from v1 [V facts, O plan]
 
@@ -131,3 +147,7 @@ Facts:
 - Codex hook timeout key (read from source, no login needed)
 - Memory (cm-memory) quality review
 - Clean up the superseded lines in PRD-v2.md
+
+## Changes
+
+2026-10-15: tools back to 9 (ctx_doctor, ctx_upgrade restored, A1); Codex install moved to a config.toml MCP entry (A2); launcher node path resolved lazily per hook run, not at install time (A12); PreCompact confirmed not a canonical event (B27); install rows added for Copilot CLI, VS Code Copilot, Kiro, ZCode, all [O] (B42); skills line narrowed to the 3 shipped command skills (B43); DeepSeek Harness and Devin CLI marked deferred past GA (I2-2).
