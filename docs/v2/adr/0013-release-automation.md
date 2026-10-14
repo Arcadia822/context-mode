@@ -30,13 +30,16 @@ Type `/release` in Claude Code (repo skill `.claude/skills/release/SKILL.md`). S
 
 Trigger: `workflow_dispatch` only (input `sha`, or `mode: rollback`). The `/release` skill starts it; `workflow_dispatch` runs even when started from a token.
 
+`release.yml` runs under a concurrency group (one key, e.g. `release`), so two `/release` runs can never race the same `release` branch ref. `publish` writes its commit to a **staging ref** (`release-staging`) first; `smoke` tests installs from that staging ref; only after smoke passes does `publish` fast-forward `release` to the staging commit. A failed smoke run leaves `release` untouched — users never see a broken build.
+
 | Job | What it does |
 |---|---|
 | ci | GP1–GP11 on macOS, Linux and Windows (reuses `ci.yml`) |
 | plan | `scripts/release/plan.mjs`: next version from Conventional Commits since the `Source-Commit:` trailer of the current `release` head (`!` → major, `feat` → minor, `fix`/`perf` → patch); release notes with `git-cliff` |
 | build | bundles, every manifest generated from `adapters/table.ts`, 3 skills, no `package.json`; checks the tree; `claude plugin validate`; `SHA256SUMS`; build provenance attestation |
-| publish | commit to `release` with the `Source-Commit:` trailer, tag `v2.x.y`, GitHub Release with the notes and `SHA256SUMS` |
-| smoke | clean-HOME installs from `@release`: Claude Code plugin, Codex marketplace, Gemini extension (if the CLI installs) |
+| publish (stage) | commit to `release-staging` with the `Source-Commit:` trailer, tag `v2.x.y` as a draft |
+| smoke | clean-HOME installs from `@release-staging`: Claude Code plugin install, Codex `config.toml` install + MCP handshake, Gemini extension (if the CLI installs) |
+| publish (promote) | only on smoke success: fast-forward `release` to the `release-staging` commit, publish the GitHub Release with the notes and `SHA256SUMS` |
 
 ### Other workflows
 
@@ -62,5 +65,26 @@ On `v2`:
 
 ## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
 
-- Q14: branch protection on `main`.
+- Q14: branch protection on `main`. The protection rule is set once by a checked-in script, `scripts/release/branch-protection.mjs`, run by hand with a repo-admin token (not CI — changing protection rules needs a human with admin rights). It calls `gh api repos/$REPO/branches/main/protection -X PUT` with:
+
+  ```json
+  {
+    "required_status_checks": { "strict": true, "contexts": ["ci"] },
+    "enforce_admins": true,
+    "required_pull_request_reviews": null,
+    "restrictions": null,
+    "allow_force_pushes": false,
+    "allow_deletions": false
+  }
+  ```
+
+  (no required PR review, since pull requests are disabled on the repo; the push protection is what keeps `main` frozen).
 - ADR-0017: `/release` runs the full live set on Sonnet low, incl. the v1-migration cases.
+
+## Trust boundary (dev-time npm install)
+
+`SKILL.md`'s step 2 runs `npm install` for the dev toolchain only (lint, build, tests) — this is separate from the no-npm-for-v2 rule, which covers how v2 is *installed by users*, not how the repo's own dev dependencies are managed. The release skill does not run `npm audit` on every release: dev dependencies are not shipped (the `build` job ships bundles with no `package.json`), so a dev-dependency CVE cannot reach an installed user. `weekly.yml` already runs `npm audit` of a v2 checkout on `main` on a schedule; that is where dependency drift is caught, not in the release's trust boundary.
+
+## Changes
+
+r4 fix pass (A2, A45, A70, B56): smoke job now installs Codex via `config.toml` + handshake instead of a non-existent marketplace command; added the concurrency group and the staging-ref publish/smoke/promote flow; added the branch-protection script and its exact settings block; added the explicit trust-boundary statement for the dev-time `npm install`.
