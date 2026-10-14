@@ -45,13 +45,15 @@ Largest items deleted:
 - 10 v1 skill files; all 10 routing/instruction files under `configs/` (the json/toml files are now generated)
 - 57 hand-written hook `.mjs` files, replaced by one built hook entry
 - 14 of 15 scripts: heal, postinstall, ctx-debug, version-sync, drift, tier2-smoke, openclaw …
-- `src/cli.ts`, `pricing.ts`, `model-prices.json`, `sibling-mcp.ts`, `plugin-cache-integrity.ts`, `flood-guard.ts`, and 25 removed-agent adapter files
+- `src/cli.ts`, `pricing.ts`, `model-prices.json`, `sibling-mcp.ts`, `plugin-cache-integrity.ts` (pending the git-log re-check above), `flood-guard.ts`, and 25 removed-agent adapter files. Call-rate throttling on `ctx_search` is dropped for v2, not replaced: `flood-guard.ts`'s single global counter would re-trip on legitimate fan-out from the 10 concurrent subagents v2 now allows (replaying #769). A GP case must assert N concurrent subagents calling `ctx_search` legitimately is never blocked.
 - the v1 `docs/adr/0001-0004`, whose numbers clash with the v2 ADRs, plus the `kimi-code`, `openclaw` and `jetbrains` docs
 - workflows: `openclaw-e2e.yml`, `update-stats.yml`, `tier2-e2e-smoke.yml` (it uses an API key), `bundle.yml`
 
 ### Order on `v2`
 
 Nothing changes on `main` without owner approval.
+
+Before deleting any `src/**/*.ts` file (not configs or build artifacts), run `git log --follow -- <file>` and confirm its fix intent is either superseded by a named v2 ADR or genuinely obsolete. `flood-guard.ts` is dropped for v2 (see below); `plugin-cache-integrity.ts`'s doctor-surfaced health check has the same gap pattern and needs the same re-check against ADR-0010 (doctor-and-upgrade) before it is deleted.
 
 0. Replace `ci.yml` first, so that v2 CI no longer runs the v1 vitest suite. If this is skipped, 31 test files break.
 1. Removed agents and the ops skill.
@@ -68,3 +70,7 @@ Decided 2026-10-14: deleted completely. It is not moved to another repo.
 
 - Q15: `tier2-e2e-smoke.yml` is replaced by the keyless harness (ADR-0012), not kept.
 - ADR-0017 R5/R7: the README gets a v1 → v2 feature table and a per-agent rollback command.
+
+## Changes
+
+r4 fix pass: added the pre-deletion `git log --follow` check for `src/**/*.ts` files, and stated explicitly that `flood-guard.ts`'s throttle is dropped (not replaced) for v2, with the reason and the required GP case.
