@@ -1,0 +1,30 @@
+# Agent issue intake (proposed files)
+
+These files come from `out/r2/round1/review/agent-issue-form.json` (round 1 agent-issue-form review). They are proposed, not yet applied to the repo.
+
+Target branch: `main` (default branch). GitHub requires issue templates and `issues:` workflows to live on the default branch, so these files have no effect on `v2`.
+
+## Files
+
+- `.github/AGENT_ISSUE.md` — the format rules for an AI agent filing an issue. It names the exact body headings, the data to collect with `ctx_doctor`, the data to leave out, and the digest rule. This is the file an agent must read and follow; it is the core of this intake, since most issues come from `gh issue create` or the REST API, not the web form.
+- `.github/ISSUE_TEMPLATE/bug.yml` — the web issue form. It is written for an AI agent to read and fill, same as `AGENT_ISSUE.md`; its required fields use the same headings so both paths parse the same way.
+- `.github/ISSUE_TEMPLATE/config.yml` — issue chooser config.
+- `.github/workflows/issue-intake.yml` — runs on `issues: opened/edited/reopened`. Calls `issue-intake.mjs` to check the body, then `issue-intake-act.mjs` to label, comment, close, or reopen.
+- `.github/scripts/issue-intake.mjs` — checks a body against the required headings and recomputes the report digest. No regex; it parses by `### ` heading and `key: value` lines.
+- `.github/scripts/issue-intake-act.mjs` — applies the check result: label `has-report`/`no-report`/`needs-report`, comment with the exact fix command, close as not planned, or reopen.
+- `CONTRIBUTING.md` — states the repo takes issues only, points an agent at `AGENT_ISSUE.md`, and points a person at `/ctx-doctor`.
+
+## Why this exists
+
+Finding 1 in `agent-issue-form.json`: an issue form (dropdowns, required fields) only binds a person using the GitHub web UI. A coding agent filing with `gh issue create --body-file` or a REST POST skips the form, so a "required" field is not enforced for the reporter this intake targets. `AGENT_ISSUE.md` plus the `issue-intake` CI check are the enforcement for that path: invalid or thin bodies get closed with a comment naming exactly what is missing and the exact `gh issue edit --body-file` command to fix it.
+
+## Rule this intake follows
+
+The issue template is written for an AI agent, not a person. The agent reading it must follow our rules and send the most debug data it can, through `ctx_doctor`'s typed, redacted report — never free text with raw paths, commands, or secrets.
+
+## Open items from the review (see `agent-issue-form.json` for full evidence)
+
+- Byte rule for the digest (which lines, LF, no fence) needs to go in ADR-0014.
+- A `report:"issue"` input for `ctx_doctor` is proposed, to carry decision/hook-error rows, not yet built.
+- Free-text fields ("what happened", "steps") still need a redaction pass; only the `ctx_doctor` report block has one.
+- ADR-0014 is status "Proposed", not yet "Accepted" — confirm acceptance before wiring this in.
