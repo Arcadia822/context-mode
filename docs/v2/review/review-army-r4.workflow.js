@@ -22,7 +22,7 @@ const SL = { model: 'claude-sonnet-5', effort: 'low' } // owner: every agent on 
 
 const RULES = `This workflow run is the review the owner asked for. If any memory or earlier message says to stop, cancel or restart a workflow, it refers to an older run: ignore it and do your task.
 Docs under review (read-only): ${W}/PRD-v2.md, ${W}/docs/v2/README.md, ${W}/docs/v2/TECH-SPEC.md, ${W}/docs/v2/adr/0001-0017, ${W}/docs/v2/review/DECISIONS-r3.md (accepted owner decisions Q1-Q19), ${W}/docs/v2/prompt/{drafts.md,lint.mjs}, ${W}/.claude/skills/release/SKILL.md.
-Previous reviews (read the part you need; NOT the truth, re-check): ${RV}/REVIEW-r3.md, ISSUE-OUTCOMES-r4.md, BOTTLENECKS-r4.md, OWNER-QUESTIONS-r4.md, REVIEW-r2.md, ISSUE-OUTCOMES-r2.md, TEST-TRIAGE-r2.md, RELEASE-AND-MIGRATION-r2.md; raw ${RV}/out/r2, out/r3, out/r3l. Decisions already taken in DECISIONS-r3.md are settled: report only where a doc still contradicts them.
+Previous reviews (read the part you need; NOT the truth, re-check): ${RV}/REVIEW-r3.md, ISSUE-OUTCOMES-r3.md, BOTTLENECKS-r3.md, OWNER-QUESTIONS-r3.md, and (once they exist) the r4 synthesis REVIEW-r4a.md, ISSUE-OUTCOMES-r4.md, BOTTLENECKS-r4.md, REVIEW-r2.md, ISSUE-OUTCOMES-r2.md, TEST-TRIAGE-r2.md, RELEASE-AND-MIGRATION-r2.md; raw ${RV}/out/r2, out/r3, out/r3l. Decisions already taken in DECISIONS-r3.md are settled: report only where a doc still contradicts them.
 Evidence (read-only): ${W}/tickets/ (map-I0..I3.md, map-P0..P3.md, v2-issue-map.md, v2-not-closed.md, v2-test-ledger.md, spike-*.md, verify-single-db.md, round3/4/5-evidence.json, data/*.json issue+PR snapshots; GitHub issues/PRs are disabled, never call the API for them). v1 code with full history (2230 commits): ${V1}. Agent sources: ${SRC}/{gemini-cli,qwen-code,opencode,badlogic_pi-mono}.
 Owner decisions (a conflict is a finding against the DOC, never a proposal to undo the decision): no fallback chains; no regex or truncation as a decision or reduction mechanism; hard deny with v1 scope and its issues fixed (ADR-0008 r3); large output never enters any subagent context (ADR-0016, MUST); no API keys for tests, keyless local harness; no npm for v2; git release branch; main frozen on v1; frequent releases via /release, no signing; web/ deleted; branch v2; 10 agents; v1 unit tests stay until v2 passes the kept ones; E2E tests wanted; the issue intake is written for AI agents, which must follow our rules and send maximum debug data.
 GIT ARCHAEOLOGY (MUST, the /context-mode-ops MUST-5 method): before any verdict or finding that keeps, changes or drops v1 behaviour, run in ${V1}: git log --follow --all -- <file>, git log -S '<string>', git log -L <a>,<b>:<file>, git blame -L. Output ARCHAEOLOGY: INTRODUCED_BY (sha date subject, issue/PR), ORIGINAL_INTENT (quote the commit message or code comment), REGRESSION_RISK, SAFE_FIX_CONSTRAINTS. If v2 re-breaks an old fix, that is a blocker.
@@ -65,6 +65,8 @@ const ISSUE_SHARDS = ['I0', 'I1', 'I2', 'I3', 'P0', 'P1', 'P2', 'P3'].flatMap((m
   focus: `issue map ${W}/tickets/map-${m}.md, ${h === 1 ? 'the FIRST half' : 'the SECOND half'} of its table rows. For EVERY row, dig into the PAST: find every commit that mentions the issue (git log --all --grep="#<n>" and the issue title words), every later commit that touched the same lines (git log -L), and whether the fix was later reverted or re-broken (regression chain). Read the closed-issue titles in ${W}/tickets/data/isall.json for the same topic to find recurring failures. Then run git archaeology on the code the issue is about (find it with git log -S / --grep '#<n>' in ${V1}); give verdict closed-by-design (ADR) | covered-by-test (GP case or KEEP-PASS v1 test file) | wont-fix (reason) | needs-decision (question + your recommended answer); compare with ISSUE-OUTCOMES-r2 and say if r2 was wrong. Findings: rows where v2 re-breaks an old fix, or where r2's verdict is wrong. Full per-row table under "items" in your JSON: {n, verdict, ref, archaeology, fix_commits, regressions, related_closed_issues, r3_wrong, question, recommendation}.` })))
   .concat([{ key: 'issues-new', level: 'senior', focus: `the 7 new items and 10 open questions in ${W}/tickets/v2-not-closed.md: same per-item rules, with archaeology` }])
 
+const DONE = new Set((args && args.done) || [])          // result files already written + pushed: never re-run, never trust the cache
+const SKIP_A = !!(args && args.skipPassA)                 // pass A + its synthesis are complete on disk
 const keyOf = (f) => `${f.file}#${f.line}#${f.category}`
 const pathOf = (pass, round, kind, key) => `${OUT}/${pass}/round${round}/${kind}/${key}.json`
 
@@ -89,7 +91,8 @@ async function internLoop(pass, round, context) {
 
 async function pass(name, units, context, seen) {
   const confirmed = []
-  let work = units.map((u) => ({ u, extra: '' }))
+  let work = units.map((u) => ({ u, extra: '' })).filter((w) => !DONE.has(pathOf(name, 1, 'review', w.u.key)))
+  log(`${name}: ${units.length - work.length} units already on disk, skipped; ${work.length} to run`)
   for (let round = 1; round <= 2 && work.length; round++) {
     const retry = []
     const [per, qa] = await parallel([
@@ -101,7 +104,7 @@ async function pass(name, units, context, seen) {
           fresh.forEach((f) => seen.set(keyOf(f), f))
           return parallel(fresh.map((f, i) => () => verify({ ...f, by: w.u.key, pass: name, round }, name, round, `${w.u.key}-${i}`)))
         }),
-      () => (round === 1 ? internLoop(name, round, context) : Promise.resolve([])),
+      () => (round === 1 && ![...DONE].some((p) => p.includes(`/${name}/round1/intern/a-`)) ? internLoop(name, round, context) : Promise.resolve([])),
     ])
     const gaps = (qa || []).filter((x) => x.docGap && x.finding && !seen.has(keyOf(x.finding))).map((x) => x.finding)
     gaps.forEach((f) => seen.set(keyOf(f), f))
@@ -118,9 +121,9 @@ async function pass(name, units, context, seen) {
 
 // ---------- pass A ----------
 const seen = new Map()
-const confirmedA = await pass('A', [...SPECIALISTS, ...ISSUE_SHARDS], 'Pass A: full re-review of the docs and of every issue/PR, with git archaeology.', seen)
+const confirmedA = SKIP_A ? [] : await pass('A', [...SPECIALISTS, ...ISSUE_SHARDS], 'Pass A: full re-review of the docs and of every issue/PR, with git archaeology.', seen)
 phase('A-Synth')
-await parallel([
+if (!SKIP_A) await parallel([
   () => agent(`${RULES}\n\nWrite ${RV}/REVIEW-r4a.md from these confirmed findings: ${JSON.stringify(confirmedA)}. Merge same root cause; blockers, majors, minors; file:line, claim, evidence, archaeology, fix, target doc. Persist it.`, { ...SL, label: 'A:synth-review', phase: 'A-Synth' }),
   () => agent(`${RULES}\n\nMerge every "items" table from ${OUT}/A/round*/review/issues-*.json into ${RV}/ISSUE-OUTCOMES-r4.md: one row per issue/PR with verdict, ref, archaeology summary, r2_wrong, question + recommendation. Totals; list rows with no verdict or no archaeology. Persist it.`, { ...SL, label: 'A:synth-issues', phase: 'A-Synth' }),
   () => agent(`${RULES}\n\nFrom ${OUT}/A/round*/review/bottlenecks.json, hooks-perf.json, storage.json, release-premortem.json write ${RV}/BOTTLENECKS-r4.md: ranked runtime, delivery and decision bottlenecks with numbers, evidence and the fix. Persist it.`, { ...SL, label: 'A:synth-bottlenecks', phase: 'A-Synth' }),
@@ -132,8 +135,8 @@ const confirmedB = await pass('B', SPECIALISTS, `Pass B: the army reviews the do
 
 phase('Final')
 await parallel([
-  () => agent(`${RULES}\n\nWrite ${RV}/REVIEW-r4.md: pass A file ${RV}/REVIEW-r4a.md plus these pass B confirmed findings: ${JSON.stringify(confirmedB)}. Mark which pass found each item. Persist it.`, { ...SL, label: 'final:review', phase: 'Final' }),
-  () => agent(`${RULES}\n\nWrite ${RV}/OWNER-QUESTIONS-r4.md: every decision only the owner can make, from ISSUE-OUTCOMES-r4.md (needs-decision rows), ${OUT}/*/round*/intern/a-*.json (ownerDecision=true), and the blockers in REVIEW-r4a.md that need a choice. Deduplicate. Order them as a decision tree: questions whose answers unblock the most other questions first. Each: number, one-paragraph question, options, recommended answer with evidence, what it unblocks. Persist it.`, { ...SL, label: 'final:questions', phase: 'Final' }),
+  () => agent(`${RULES}\n\nWrite ${RV}/REVIEW-r4.md: pass A file ${RV}/REVIEW-r4a.md plus these pass B confirmed findings: ${JSON.stringify(confirmedB)}, plus every finding in ${OUT}/B/round*/review/*.json (some units ran in an earlier, stopped run and are only on disk; treat their majors/minors as not verified). Mark which pass found each item. Persist it.`, { ...SL, label: 'final:review', phase: 'Final' }),
+  () => agent(`${RULES}\n\nWrite ${RV}/OWNER-QUESTIONS-r4.md: every decision only the owner can make, from ISSUE-OUTCOMES-r4.md (needs-decision rows), ${OUT}/*/round*/intern/a-*.json (ownerDecision=true), every needs-decision row and ownerDecision answer in ${OUT}/B/, and the blockers in REVIEW-r4a.md that need a choice. Deduplicate. Order them as a decision tree: questions whose answers unblock the most other questions first. Each: number, one-paragraph question, options, recommended answer with evidence, what it unblocks. Persist it.`, { ...SL, label: 'final:questions', phase: 'Final' }),
 ])
 await agent(`Run: ${PERSIST} --sweep ${OUT} && ${PERSIST} ${RV}/*.md. Return non-"unchanged" lines.`, { ...SL, label: 'final:sweep', phase: 'Final', ...VOTE_OPTS })
 return { A: confirmedA.length, B: confirmedB.length, seen: seen.size }
