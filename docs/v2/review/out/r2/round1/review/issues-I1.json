@@ -14,7 +14,7 @@
   },
   {
    "file": "tickets/map-I1.md",
-   "line": 43,
+   "line": 36,
    "category": "regression-risk",
    "severity": "major",
    "claim": "#1142 verdict drops the hook cwd pin, but no v2 test proves the server sets ctx_execute cwd to the session project.",
@@ -42,7 +42,7 @@
   },
   {
    "file": "tickets/map-I1.md",
-   "line": 36,
+   "line": 40,
    "category": "gap",
    "severity": "major",
    "claim": "#1156, #1079, #1140 rest on retired refs (D6 session DBs, D8 JSONL journal, 5 MB cap); single context.db has no retention or cap rule, and GP6 asserts 'priority polarity' that ADR-0009 removed.",
@@ -70,7 +70,7 @@
   },
   {
    "file": "tickets/map-I1.md",
-   "line": 20,
+   "line": 18,
    "category": "wrong-fact",
    "severity": "minor",
    "claim": "#1099, #1106, #1125, #1134 reasons ('No deny/redirect exists; hints only', 'No command rewrite') contradict ADR-0008 r3 deny + ADR-0016 rewrite.",
@@ -88,7 +88,7 @@
   },
   {
    "file": "tickets/map-I1.md",
-   "line": 50,
+   "line": 42,
    "category": "gap",
    "severity": "minor",
    "claim": "#1162 and #1174 still say Q/pending, but HTTP daemon removal and bundling are decided.",
