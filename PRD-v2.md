@@ -201,7 +201,9 @@ Removed as a tool: `ctx_insight` → CLI only (TECH-SPEC §3.11/G4).
 
 ## 12. Removed in v2
 
-Bun + bun:sqlite · better-sqlite3 · ensure-deps · heal scripts · `start.mjs` chdir/heal flow · `events.md` · snapshot injection · `<context_window_protection>` block · CLAUDE.md/AGENTS.md templates · hard denies (curl/wget/WebFetch/build tools) · statusline · `ctx_insight` · HTTP daemon · lifetime stats timer · `ps` liveness · WAL-mtime cleanup · global MCP-ready sentinel · search flood guard · runtime `npm install` · `ctx_doctor`/`ctx_upgrade` tools.
+Bun + bun:sqlite · better-sqlite3 · ensure-deps · heal scripts · `start.mjs` chdir/heal flow · `events.md` · snapshot injection · `<context_window_protection>` block · CLAUDE.md/AGENTS.md templates · hard denies (curl/wget/WebFetch/build tools) · statusline · `ctx_insight` (as a tool; stays as CLI only) · HTTP daemon · lifetime stats timer · `ps` liveness · WAL-mtime cleanup · global MCP-ready sentinel · search flood guard · runtime `npm install`.
+
+**Not removed, kept as tools (§16, ADR-0010):** `ctx_doctor` and `ctx_upgrade`. Older text in this file calling them removed is stale and superseded.
 
 ## 13. Tests and CI
 
