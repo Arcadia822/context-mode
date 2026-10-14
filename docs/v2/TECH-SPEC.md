@@ -36,7 +36,7 @@ v2.0.0 is released only when **all** of these hold. Each one is checked by a mac
 | GS3 | G25 is answered: do hooks fire for MCP tools on Copilot CLI, ZCode, Pi and OpenCode 2 (GP-LIVE-HOOKS) | release job |
 | GS4 | v1 tests stay: every KEEP-PASS test in `docs/v2/review/TEST-TRIAGE-r2.md` (131) passes on v2; every ledger row has a verdict; no file under `e2e/` imports `src/` | CI lint + ledger script |
 | GS5 | The repo has no SKILL.md other than the 3 command skills and `.claude/skills/release`, no removed-agent path (§3.10) and no `AGENTS.md`, `GEMINI.md`, `QWEN.md`, `CLAUDE.md`, `SYSTEM.md` or `copilot-instructions.md`; `lint.mjs` passes on the built `initialize` + `tools/list` | GP2 |
-| GS6 | Claude Code (mcp_tool hook): p95 ≤ 40 ms wall. Command-hook agents: ≤ 20 ms CPU on top of bare Node (bare Node alone is 45.6 ms p95 on the owner's Mac) | GP3 bench |
+| GS6 | Claude Code (mcp_tool hook): p95 ≤ 40 ms wall. Command-hook agents: ≤ 20 ms CPU on top of bare Node (bare Node alone is 45.6 ms p95 on the owner's Mac). Per agent, combined wall-clock (spawn + hook body) stays ≤ 60 ms p95 | GP3 bench |
 | GS9 | Server passes GP1/GP2 as a 2026-07-28 stateless server (`server/discover`) and as a 2025-06-18 / 2025-11-25 `initialize` server, with identical bytes (ADR-0007) | per-PR CI |
 | GS7 | Install and update from git `#release` with no npm step | GP1 |
 | GS10 | v1 retention gates R1–R8 of ADR-0017 pass, incl. the v1-migration live case set | release |
@@ -59,6 +59,17 @@ PRD lines this spec supersedes. They are kept in the PRD for history.
 | §14 M3 list (Cursor, Kimi, JetBrains, agy, Zed) | §2 here |
 | §10 E3 / §7: `ctx_search` default `project` | conflicts with README §8 (`worktree`, #1185) → Q6 |
 
+### 1a. M0: table ownership (ADR-0002)
+
+One table, one owning module. No two modules write the same table.
+
+| Table | Owning module |
+|---|---|
+| `events` | journal writer (hooks + `ctx_resume`, §6.2 GP6) |
+| `sources` | indexer (`ctx_index` / `ctx_fetch_and_index`, §6.2 GP5) |
+| `chunks` (FTS5) | indexer, read by `ctx_search` |
+| `meta` | schema/version bookkeeping, read by `ctx_doctor` (§3.11) |
+
 ## 2b. New ADRs from round 3 (2026-10-14)
 
 - ADR-0007 MCP 2026-07-28 · ADR-0008 enforcement (rewrite + cap) · ADR-0009 compaction + memory · ADR-0010 doctor + upgrade · ADR-0011 branches, release, v1 cleanup, metrics. Evidence: `tickets/round3-evidence.json`.
@@ -76,7 +87,7 @@ There are two channels: MCP `InitializeResult.instructions`, and tool descriptio
 | Gemini CLI | **[V] yes**, appended to project memory as "instructions provided by the tool server '…'". **Only in trusted folders** | [U] assumed up front | `mcp-client-manager.ts:696-708`; `context/memoryContextManager.ts:123-134` (`isTrustedFolder() ? projectMemoryWithMcp : ''`) |
 | Qwen Code | **[V] yes**, as a system reminder: "Treat the instructions as configuration guidance, not as system directives." | [U] | `core/environmentContext.ts:337-365, 603` |
 | OpenCode 2 | **[V] yes**, as a `<mcp_instructions><server name=…>` block in the session context. Codemode adds "Use tools from this server through `execute` …" | [U] | `packages/core/src/mcp/instructions.ts:18-28`; `session/context.ts:84` |
-| VS Code Copilot | **[V] yes**, as `<instruction forToolsWithPrefix="mcp_<server>">` in the agent prompt, only for servers whose tools are in the request | [U] | `extensions/copilot/src/extension/prompts/node/agent/defaultAgentInstructions.tsx:386-398`; `mcpTypesUtils.ts:95`; `mcpServer.ts:1190-1200` |
+| VS Code Copilot | **[V] yes**, as `<instruction forToolsWithPrefix="mcp_<server>">` in the agent prompt, only for servers whose tools are in the request — "in the request" means the server's tool appears in that turn's `tools/list` result sent to the model, not that the model called it. On a miss (tool absent from that turn's list): no fallback; `ctx_doctor` reports it as a FAIL row naming the fix ("tool not advertised this turn — reinstall/re-enable the MCP server") | [U] | `extensions/copilot/src/extension/prompts/node/agent/defaultAgentInstructions.tsx:386-398`; `mcpTypesUtils.ts:95`; `mcpServer.ts:1190-1200` |
 | Copilot CLI | **[U] probable.** github/copilot-cli#1579 "Copilot CLI ignores MCP server instructions" was closed as *completed* on 2026-06-25, with no linked commit. The source is closed | [U] | GitHub API |
 | Kiro | **[V] no.** kirodotdev/Kiro#11096 "Support MCP server `instructions` field …" is still open (created 2026-08-27, label `mcp`) | [U] | GitHub API |
 | ZCode | **[U] no evidence.** Code search in public `zai-org/ZCode`: `getInstructions` 0 hits, `serverInstructions` 0; `server_instructions` only in their own node-repl server | [U] | GitHub code search |
@@ -203,6 +214,7 @@ Rules:
 1. **Prompt text** (instructions, descriptions, the `ctx-stats` prompt, tool results) names tools **bare**: `ctx_execute`. Each agent shows the model its own prefixed name next to the description, so a bare name is never wrong, while a prefixed name is wrong on every other agent. Lint PR12 fails on `mcp__…ctx_`, `mcp_…ctx_`, `plugin_…ctx_`.
 2. **Hooks**: each adapter row in `adapters/table.ts` holds the exact name pattern for that agent (one row per agent, one install mode per agent, PRD E14). Generated matchers are tested in GP3 against names taken from recorded native payloads, never against hand-written strings (#1222).
 3. The server key is fixed: `context-mode` everywhere.
+4. **Claude Code's real gate is a settings.json matcher, not a server-side filter.** `PreToolUse` hooks are selected by the `matcher` field (a regex over the tool name, e.g. `mcp__context-mode__.*`) in the generated `hooks` block of `settings.json`; there is no `type: "mcp_tool"` field anywhere in that schema (an earlier draft of this section named one; it does not exist). If the MCP server is disconnected when the model calls the tool, the host has no tool to match against, so the call either fails at the host (tool unknown) or — on hosts that keep a stale tool list — runs with no hook. GP3/LV adds a case on a live Claude Code session: disconnect the `context-mode` server mid-session, call a previously-advertised `ctx_execute`, and assert either a host-level failure or an unblocked tool run with zero hook fired (never a hook firing on a dead server).
 
 ### 3.9 User commands as skills: `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade` [D 2026-10-14]
 
@@ -220,19 +232,19 @@ v1 issue titles mentioning doctor: 35 (8 open); upgrade/heal: 70 (18 open). Main
 | Check | Source of truth |
 |---|---|
 | version: running bundle vs latest `#release` tag | bundle constant; `git ls-remote` (no network → "unknown", not FAIL) |
-| Node ≥ minimum, `node:sqlite` loads | process |
+| Node ≥ minimum, `node:sqlite` loads | process. `node:sqlite` closes #1251 (native-module ABI breakage) with no native module shipped at all (r3 Q10); GP9 adds a Windows cold-start, no-network case mirroring #861 before #1251 is marked closed |
 | host config for **this** agent: MCP entry + 4 hook entries match `adapters/table.ts` exactly, no v1 entries, no duplicate | the generated config, compared as data, not by path string |
 | hook round-trip: run the hook entry with a recorded payload, check output + wall time ≤ 40 ms | GP3 fixture shipped in the bundle |
 | MCP: this process is the one the host started (clientInfo = agent) | `initialize` |
 | project + worktree resolved from the agent's one source | adapter table |
-| `context.db`: `integrity_check`, FTS5 integrity, schema version | DB |
+| `context.db`: two separate FAIL rows — **stale schema** (meta.schema_version < bundle's expected version; fix = run `ctx_upgrade`) and **integrity_check failure** (`PRAGMA integrity_check` returns a row other than `ok`; fix = restore from the last good state, never auto-rewrite) | DB |
 | index: sources and chunk counts per scope (fixes #1014: empty index is reported, not PASS) | DB |
 Never spawns per tick, never writes, never installs.
 
 **`ctx_upgrade`** (one path per install mode, no fallback):
 1. Read the install mode from the adapter table (marketplace plugin, git checkout, in-process plugin).
 2. Fetch the latest `#release` tag into a new version dir; verify the bundle hash.
-3. Regenerate only context-mode's entries in the host config from `adapters/table.ts`; keep user keys and user-set values (hook timeouts, #1226); delete v1 entries; paths resolved at hook run time, never baked (#711, #1005).
+3. Regenerate only context-mode's entries in the host config from `adapters/table.ts`; keep user keys and user-set values (hook timeouts, #1226); delete v1 entries; paths resolved at hook run time, never baked (#711, #1005). One `resolvePluginRoot(adapter)` function, called by install, upgrade and doctor alike, generalizes the per-adapter fix v1 shipped only for Codex (`fix(codex): resolve plugin-manager root for doctor and upgrade`, #771) to all 10 agents.
 4. Switch atomically (rename), keep the previous dir for one rollback; never touch user instruction files.
 5. Return a table of changes + "restart needed"; the `/ctx-upgrade` skill then runs `ctx_doctor`.
 Marketplace installs: the host's own update command is the path; `ctx_upgrade` reports it and only fixes config entries.
@@ -286,19 +298,48 @@ Hard rule: no test imports `src/`. Inputs and outputs are processes, stdio, file
 
 | ID | Path | Inputs | Asserts (golden unless noted) | Requirement ids (examples) |
 |---|---|---|---|---|
-| GP1 | Install + handshake, ×10 adapters | release tree, generated host config | config valid for the host; server starts with no npm step; `initialize` (instructions bytes) and `tools/list` (7 tools); project read after `initialize` | #1206 #1282 #1183 #1090 #1222 #1226 #1000 #1296 |
-| GP2 | Prompt surface | `initialize`, `tools/list`, Pi plugin system prompt | identical bytes on 3 OS; `lint.mjs` = 0 failures; budgets (Q5); no user-role injection | #1264 #864 #1031 |
-| GP3 | Hooks, ×10 adapters × 4 events | `e2e/fixtures/<agent>/<ver>/*.json` | native stdout/exit code; hint once per session; never empty fields; never throws; PowerShell and quoted curl/wget routed; p95 ≤ 40 ms | #1107 #1299 #1212 #897 #910 #1179 #1261 |
-| GP4 | `ctx_execute` | shell/js/python, `file`, `intent`, `timeoutMs`, cancel | exit class; output cut is code-point safe; process tree killed; env passed via spawn env; NODE_OPTIONS does not leak; deleted cwd; PATH shims | #1182 #1093 #1121 #1176 #903 #925 #1117 #951 #1068 #1286 #1209 #1218 |
-| GP5 | `ctx_index` → `ctx_search` | folder with nested `.gitignore`, HTML, Markdown, non-ASCII text | ranked hits; `**` matches zero dirs; rowless tables; nested fences; byte caps; zero-hit reply states scope and source count; proxy env | #1292 #1291 #1295 #1138 #1136 #1238 #878 #898 #961 #1014 #1039 |
-| GP6 | Journal + resume | PostToolUse payload sequence, then a compaction | `events` rows; `ctx_resume` ≤ 2 KB golden; priority polarity | #1181 #1156 |
-| GP7 | Scope | 2 worktrees × 2 sessions × 2 agents | identity shared per repo; search default per Q6; session ranks first; path containment by components | #744 #1185 #895 #1294 #1302 |
-| GP8 | Concurrency | 4 servers + hooks writing one `context.db` | 0 busy errors reach the tool result; `integrity_check` ok; no retry loop; idle CPU ≈ 0 | #985 #1213 #1248 · verify-single-db |
-| GP9 | Lifecycle | stdin EOF, parent kill, on 3 OS | exit < 2 s; no spawn at boot; no `chdir` | #1100 #982 #953 #1167 #923 #924 #974 |
-| GP11 | Doctor + upgrade | v1 install, broken config, empty index, user-set hook timeout | doctor table golden; upgrade keeps user values, removes v1 entries, no baked paths, rollback works | #1152 #1014 #901 #1226 #711 #1005 #548 |
-| GP10 | Stats | a known sequence of tool calls | saved = sandbox bytes − returned bytes; idempotent per call id; per agent "no data" with the reason | #1151 #1252 #1036 #1287 |
+| GP1 | Install + handshake, ×10 adapters | release tree, generated host config | config valid for the host; server starts with no npm step; `initialize` (instructions bytes) and `tools/list` (9 tools: ctx_doctor and ctx_upgrade stay as tools per Q3b, only ctx_insight drops, G4); project read after `initialize`; after a simulated Claude Code auto-update leaves a stale plugin-cache path, the next install/update detects and fixes it with no manual doctor run | #1206 #1282 #1183 #1090 #1222 #1226 #1000 #1296 |
+| GP2 | Prompt surface | `initialize`, `tools/list`, Pi plugin system prompt | identical bytes on 3 OS; `lint.mjs` = 0 failures; budgets (Q5); no user-role injection; injected bytes are byte-stable (constant, not just relocated) across requests in the same turn | #1264 #864 #1031 |
+| GP3 | Hooks, ×10 adapters × 4 events | `e2e/fixtures/<agent>/<ver>/*.json` | native stdout/exit code; hint once per session; never empty fields; never throws; PowerShell and quoted curl/wget routed; p95 ≤ 40 ms, CI-enforced as ≤ 20 ms CPU over a bare Node spawn; an unrelated `mcp__` tool call (e.g. `mcp__grafana__get_datasource`) spawns zero hook processes; `PostToolUse` dispatch is fire-and-forget (detached write to the journal, no blocking wait on the tool result) | #1107 #1299 #1212 #897 #910 #1179 #1261 #960 |
+| GP4 | `ctx_execute` | shell/js/python, `file`, `intent`, `timeoutMs`, cancel | exit class; output cut is code-point safe; process tree killed (Windows: `taskkill /F /T /PID`, matching v1's proven mechanism, `src/executor.ts:196-200`; no Job Object switch is adopted without an ADR); env passed via spawn env; NODE_OPTIONS does not leak; deleted cwd; PATH shims; always spawns the interpreter binary directly with `shell: false` on every OS (no git Bash / PowerShell / cmd shell choice); PowerShell/pwsh scripts are written with a UTF-8 BOM plus a console-encoding prelude, round-tripping a non-ASCII string; fetch-error path returns a one-line cause with no raw Node stack frame (#1135); no server-side default timeout when the caller omits it — the host's own RPC timeout governs, per the v1 #406 fix (`eea5877b`: dropped the Zod `.default(30_000/60_000)` because it killed long Gradle/Maven/SBT builds); the per-call `timeoutMs` override, when given, is enforced through the same `AbortSignal` mechanism used for the cancel path; this also removes `e4f4379d`'s adapter-local antigravity-cli default, since v2 has one rule (none) instead of per-adapter ones; cancel on a long-running call tears down the child process tree within 1 s and returns a cancel reply; cold start replies in < 1 s with no PATH probes | #1182 #1093 #1121 #1176 #903 #925 #1117 #951 #1068 #1286 #1209 #1218 #1135 |
+| GP5 | `ctx_index` → `ctx_search` | folder with nested `.gitignore` (incl. negation patterns), HTML, Markdown, non-ASCII text | ranked hits; `**` matches zero dirs; rowless tables; nested fences; byte caps; zero-hit reply states scope and source count; proxy env — the SSRF check runs on the resolved proxy target, in the same process as the fetch, after proxy env vars are applied, never as a separate parent pre-check (closes v1 #476's gap); non-ASCII auto-memory search tokenization (#1295); directory-walk symlink checks call `security.ts`'s path-containment function, never a separate ad hoc `..`-prefix string check; `highlight()` clips a large FTS row before rendering (#963) and stays HTML-sanitized (#341, `ceb49688`) on top of that clip — both must hold, not just the size clip; `ctx_fetch_and_index` on an unreachable URL returns only the one-line error cause (no raw Node stack), same rule as GP4's #1135 case, for consistency across tools | #1292 #1291 #1295 #1138 #1136 #1238 #878 #898 #961 #1014 #1039 #476 #963 #341 |
+| GP6 | Journal + resume | PostToolUse payload sequence, then a compaction | `events` rows; `ctx_resume` ≤ 2 KB golden, mirroring the GP4 cap shape, code-echo off by default (#1047); priority polarity; `ctx_resume(seq: N)` resumes from a given pointer | #1181 #1156 #1047 |
+| GP7 | Scope | 2 worktrees × 2 sessions × 2 agents | identity shared per repo; search default per Q6; session ranks first; path containment by components; `${workspaceFolder}` resolves correctly under VS Code Remote-WSL | #744 #1185 #895 #1294 #1302 |
+| GP8 | Concurrency | 4 servers + hooks writing one `context.db` | 0 busy errors reach the tool result; `integrity_check` ok; no retry loop; idle CPU ≈ 0; the live-PID check for the #1248-class cleanup runs inside the cleanup transaction, never as a separate pre-check with a race window | #985 #1213 #1248 · verify-single-db |
+| GP9 | Lifecycle | stdin EOF, parent kill, on 3 OS | exit < 2 s; no spawn at boot; no `chdir`; stdin-EOF → SIGTERM (2 s) → SIGKILL (5 s) escalation is preserved in any bootstrap rewrite (#862); Windows parent-death is a Job Object (not ppid polling); hosts with no stdin-EOF/ppid-change signal kill the process tree only via the Q8 timeout model, never a bare idle-shutdown timer — `a888cac6` reverted that twice (#568, #595) after it broke 12 hosts, so process accumulation on those hosts is the accepted cost, decided; stdin is a TTY ⇒ the `end` listener never registers and the process does not exit on TTY idle (#534, #236; the v2-test-ledger row for `server-stdin-eof-exit.test.ts` is `GP9/tty-gate`, not a bare `REMOVED/GP9`) | #1100 #982 #953 #1167 #923 #924 #974 #999 #568 #534 #236 |
+| GP11 | Doctor + upgrade | v1 install, broken config, empty index, user-set hook timeout | doctor table golden (stale-schema and `integrity_check` failure reported as distinct rows); upgrade keeps user values, removes v1 entries, no baked paths, rollback works; with no `[features].hooks` key in Codex config, doctor still reports `hooks=true`, Codex's real default | #1152 #1014 #901 #1226 #711 #1005 #548 |
+| GP10 | Stats | a known sequence of tool calls | saved = sandbox bytes − returned bytes; idempotent per call id — cost events are keyed by turn id so repeated step-finish events in one turn count once; `reduction_pct` counts returned bytes once in the denominator (unit-tested); `session_kept_out ≤ project_total ≤ alltime_total`; 0 calls ⇒ 0 savings; per agent "no data" with the reason | #1151 #1252 #1036 #1287 |
 | GP-LIVE-ROUTING | real agent + model | §6.5 | over-routing and under-routing within thresholds; answers correct | ADR-0005, ADR-0006 |
 | GP-LIVE-HOOKS | real agent + model | an MCP tool call | hook fired yes/no per agent | G25 |
+
+### 6.2a Contract and unit assertions (not full GP cases)
+
+These are narrower than a GP case — one function or one invariant each — but still never import `src/` directly except where stated as a unit test.
+
+| Area | Assertion |
+|---|---|
+| Sandbox executor | The v2 executor is Node.js/TypeScript, not Rust. Stated here to close any future confusion on this point. |
+| `ctx_stats` (D3) | Every sibling session DB it opens is opened read-only; its `mtime` is unchanged after a stats run. |
+| `ctx_batch_execute` | An identical chunk returned by two queries inside the same batch call is deduped, not only across separate calls. |
+| Config dir resolution | One `resolveConfigDir()` module, used by storage, stats, cache-heal and tests; replaces three independent reads. |
+| Adapter detection (D4) | One fixed detection method per adapter, including per-session workspace resolution — not a single global method shared across adapters. |
+| Hooks throttle | A session-id-keyed marker in the existing append-only journal is the ppid-keyed throttle; it stays a separate mechanism from #593's periodic external-MCP nudge. |
+| Events removal | The C2 adapter's session/project scoping inherits `156aa0fd`'s project-scoped dedupe key, so removing `events.md` does not reopen the #737-class cross-project leak. |
+| `ctx_execute` output | Code-fence echo-first-line is off by default; an optional `summary` arg re-enables it (r3 Q19). |
+| OpenCode adapter | The plugin module exports `{id, setup}`, per OpenCode 2.x's plugin API. |
+| Pi adapter | Real 0.85 extension-discovery directories are detected, not hardcoded legacy paths (#1168, split out of the shared #1135 bucket; #1150 gets its own GP5 assertion: the call row shows language + first code line). |
+| `runPool` | `capped === (jobs >= concurrency)`, asserted before `runPool` is ported to v2. |
+| Sandbox network (D15) | The outbound-HTTP ban from the sandbox covers any outbound HTTP, not only LLM API calls; proxy env is YES with the SSRF check from A8 (r3 Q19, #1184). |
+| WebFetch replacement (D10) | Hard deny stays with v1 scope (owner rule); `#945` is not moot. `claude.ai` artifact URLs are allowed by default through the replacement mechanism, with no special-case allow entry. |
+| jq filter (ctx_batch_execute / fetch pipelines) | A closed, syntactically-checkable `jq` filter whitelist (not an open "scalar" rule), plus `head -c N` capped at `OUTPUT_CAP`. Boundary cases: `curl … \| jq '.data'` (object, passes) vs `curl … \| jq 'length'` (scalar, passes) are both checked against the whitelist, not against output shape. |
+| DB handle cleanup | All sqlite DB handles are closed explicitly in test teardown before process exit, so Windows EPERM hangs are resolved without skipping any kept test. |
+| Pi bridge bootstrap | Retryable per turn, not per session: the next `before_agent_start` after a failed `tools/list` re-runs bootstrap. |
+| Pi bridge writes | `#1205` splits into two tests: the process never spawns Bun, and the single-writer-per-file invariant (D3) holds under concurrent Pi-bridge writes. |
+| Test harness portability | CI checks the v2 test harness does not hardcode `/bin/bash`; only then is #972 treated as verified-safe. |
+| Pi routing hint | The hint appears in the tool description text (host-agnostic), not in hook stdout, since Pi never receives hook output. |
+| Adapter conformance | Per new adapter: (a) its shell-tool allow-list is reviewed (#1212); (b) its own `hooks.json` schema-conformance test runs, not just Claude Code's schema (#1240); (c) install/upgrade preserves pre-existing user hooks (#1235). |
+| D7 hooks.json generation | A headless-mode GP case runs alongside the existing D7 generation test. |
+| Contract tests (class B) | Non-ASCII auto-memory search tokenization (#1295, covered in GP5); `**` zero-directory glob match (#1291, GP5); a real JSONC tokenizer for config edits, never a line-based `//`-strip (#1271) — this satisfies the owner's no-regex-as-reduction-mechanism rule. |
 
 ### 6.3 Fixtures
 
@@ -350,26 +391,19 @@ Hard rule: no test imports `src/`. Inputs and outputs are processes, stdio, file
 - Each row gets exactly one verdict: `GPn/<case>`, `REMOVED:<ADR|G|E id>`, or `N/A`.
 - v1 `tests/` (210 files, 81,072 lines; 136 import `../src/`; 64 start processes) is deleted in one commit, only when no row is empty and GS1 holds.
 
-### 6.9 Live E2E job (`live-e2e.yml`) [D: no nightly]
+### 6.9 Live E2E: a keyless harness, not a CI job with keys (ADR-0012)
 
-Triggers: `workflow_dispatch` (input: which agents) and `push: tags: ['v*-rc*']`. Keys live in a GitHub environment with required reviewers. Models are pinned; `--max-budget-usd` is set where the CLI has it.
+No API key for any test (owner rule). This supersedes the earlier CI-job-with-secrets design: the harness runs in the owner's own logged-in Claude Code, never in CI with stored keys.
 
-Each matrix cell (ubuntu-latest, one agent): install a pinned agent version → write config only to temp dirs → run `e2e/live/routing-tasks.json` (10 small + 10 large) and the G25 hook probe → parse the event stream (first non-ToolSearch tool, answer, bytes returned) → check §6.5 thresholds → upload raw JSONL.
-
-| Agent | Tier | Headless command (from docs/source) | Auth secret | Temp config |
-|---|---|---|---|---|
-| Claude Code (Opus, Sonnet, Haiku) | required | `claude -p --output-format stream-json --verbose --plugin-dir <build> --strict-mcp-config --include-hook-events --max-budget-usd 0.5 --no-session-persistence` | ANTHROPIC_API_KEY | `--plugin-dir` |
-| Codex CLI | required | `codex exec --json --skip-git-repo-check --ephemeral` | OPENAI_API_KEY | temp CODEX_HOME with hooks.json + config.toml `[features] hooks = true` |
-| Gemini CLI | required | `gemini -p --output-format stream-json --yolo --allowed-mcp-server-names context-mode` | GEMINI_API_KEY | GEMINI_CLI_HOME |
-| Qwen Code | required | `qwen -p --output-format stream-json --yolo` | provider key (free OAuth tier is gone) | QWEN_HOME |
-| Copilot CLI | required | `copilot -p --output-format json --allow-all-tools --additional-mcp-config @cm.json` | COPILOT_GITHUB_TOKEN (fine-grained PAT, Copilot Requests; CI GITHUB_TOKEN does not work) | flag |
-| Pi | required | `pi -p --mode json --no-session -e <build>/pi-extension.js` | ANTHROPIC_API_KEY | `-e` |
-| Kiro | tier 2 | `kiro-cli chat --v3 --no-interactive --trust-all-tools --require-mcp-startup --output-format stream-json` | KIRO_API_KEY (paid plan only) | path open |
-| OpenCode 2 | tier 2 | `opencode run --format json --dangerously-skip-permissions` | provider key | OPENCODE_CONFIG_CONTENT; npm `latest` is 1.19.0, try `opencode-ai@dev` |
-| ZCode | tier 2 | `zcode --prompt --output-format stream-json` | ZCode credential | project-root `zcode.json`; no published Linux CLI, build `apps/zcode-cli` |
-| VS Code Copilot | contract only | no headless model turn exists outside microsoft's own harness | — | covered by Copilot CLI live run + hook-payload fixture E2E |
-
-Only Claude Code and Codex were run locally; the other rows come from source and docs and get one dry run when the job is built. Size: about 220 sessions per RC run (Claude 3 × 20 + 8 agents × 20); the pilot cost about $0.08 per Opus session, so measure one run before fixing a budget.
+- **Entry points**, both run the same script: a terminal command (`node e2e/live/run.mjs [--agents claude,codex] [--models haiku|sonnet|opus|all] [--cases routing,deny,compact,hooks]`), and `/e2e-live` inside Claude Code.
+- **No key needed:** `claude -p` runs on the owner's Max subscription with `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`/`ANTHROPIC_CUSTOM_HEADERS` unset (`init.apiKeySource = "none"`). Codex runs logged in with ChatGPT, via a temp `CODEX_HOME` holding only a symlink to the owner's real `auth.json`, with `--ignore-user-config` so `~/.codex` is never touched (that flag still loads `~/.codex/hooks.json`, which is why the symlink-only temp home is still needed).
+- **Child env** is built from an allow-list (PATH, HOME, USER, SHELL, TMPDIR, LANG, TERM) plus `ENABLE_CLAUDEAI_MCP_SERVERS=false`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` and a temp data dir. `ANTHROPIC_*` and `CLAUDE_CONFIG_DIR` are never passed; the login stays in the Keychain.
+- **Agents actually run:** only `claude` and `codex` are installed and logged in on the owner's Mac today. Every other agent in §2's list of 10 prints `SKIPPED` with the reason (not installed / not logged in) until the owner adds it. GS2 reads as "pass on every agent the harness could run; the rest SKIPPED with a reason."
+- **Cases:** routing (§6.5 task set), deny/repeat-allow (ADR-0008 golden cases), compaction (ADR-0009, `/compact` as a later stream-json turn), hook firing (G25). Hook timing is read from the v2 DB, since stream events carry no timestamp.
+- **Default run:** Haiku on Claude Code, plus Codex if logged in. `--models all` adds Sonnet and Opus. The report is a table per agent/model: pass/fail against §6.5 thresholds, first tool used, bytes returned.
+- **Release gate (ADR-0013):** `/release` runs this harness before starting the release workflow. The release report carries a "live test: passed/skipped" field and a running consecutive-skip count; `/release` refuses to start once that count reaches 3 skips in a row, so `skip-live` cannot quietly become permanent.
+- **Traps avoided:** `--strict-mcp-config` drops the server shipped inside `--plugin-dir`, so it is not used; the harness accepts only a real `claude`/`codex` binary (Mach-O/ELF magic bytes or the right `package.json` name), not the first shim on PATH.
+- **Model:** `claude-sonnet-5 --effort low` by default (ADR-0017); step mode runs only the cases whose `covers` match the changed files.
 
 ## 7. Data and evidence files
 
@@ -391,7 +425,7 @@ Only Claude Code and Codex were run locally; the other rows come from source and
 
 | Spike | Question | Blocks |
 |---|---|---|
-| S-NODE | Minimum Node version with `node:sqlite` + `timeout` and without a flag | ADR-0002, §6.6 |
+| S-NODE | Minimum Node version with `node:sqlite` + `timeout` and without a flag — not yet checked (`verify-single-db.md`: "Not checked: Node 22"). Until S-NODE reports a number, install hard-fails with a one-line reason ("Node ≥ <checked-minimum> required, found <version>") on any platform with no qualifying Node — no fallback, no silent downgrade (owner rule) | ADR-0002, §6.6 |
 | S-COPILOT | Does Copilot CLI pass `instructions` to the model? Test with a live probe like §3.1 | §3.7 |
 | S-ZCODE | Same probe on ZCode | §3.7, Q10 |
 | S-NAMES | Exact MCP tool names on Copilot CLI, Kiro, ZCode; live check of the Gemini `mcp_` finding | §3.8, GP3 |
@@ -415,7 +449,7 @@ Only Claude Code and Codex were run locally; the other rows come from source and
 | Q8 | E2E-live only by hand + on RC tags, never nightly (owner, 2026-10-14) | **[D]** |
 | Q9 | **Test runner = `node:test`**; matrix 3 OS × min/current Node, ≤ 10 min per OS | **[D]** |
 | Q10 | Kiro, ZCode: tool descriptions only | **[D]** |
-| Q11 | **All 10 agents, Codex included, are supported and release-gated by GP-LIVE-ROUTING**; no `AGENTS.md` | **[D]** |
+| Q11 | **All 10 agents, Codex included, are supported and release-gated by GP-LIVE-ROUTING**; no `AGENTS.md` | **[D, pending S-CODEX]** — the 37 `defer_loading` references under `codex-rs/core/src` (TECH-SPEC.md:86) are not yet read; the release gate does not rest on an unconfirmed deferred-loading assumption until S-CODEX closes |
 | Q12 | Prompt texts use bare tool names only (`ctx_execute`); host-prefixed names live only in the adapter name map (§3.8, PR12) | **[D]** |
 
 ## 11. Changes from r1 (same day)
@@ -439,3 +473,7 @@ Source: `docs/v2/review/DECISIONS-r3.md` (owner accepted all 19). These override
 - **Fetch:** honours `HTTP(S)_PROXY`/`NO_PROXY`, with an SSRF check on the target host (Q19).
 - **Tool descriptions:** 1,024 chars each, enforced by `lint.mjs` (Q13). "No regex" applies to runtime code only; CI tools may use regex (Q17).
 - **Tests:** ADR-0003 r2 + ADR-0017: v1 tests stay; an E2E case at every step; live E2E on `claude-sonnet-5 --effort low`.
+
+## 13. Changes (r4 fix pass)
+
+§6.9 rewritten from a CI-job-with-keys design to ADR-0012's keyless harness (no API key anywhere); GP1–GP11 rows and the doctor table gained the fix-r4 assertions (owners.techspec in `docs/v2/review/out/fix-r4/plan.json`); Q11 demoted to pending S-CODEX; S-NODE's hard-fail path stated; new §1a (table ownership) and §6.2a (contract/unit assertions) added.
