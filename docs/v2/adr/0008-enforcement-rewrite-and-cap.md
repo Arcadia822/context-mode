@@ -74,8 +74,8 @@ pred = (k·prior + n·p90) / (k + n),   k = 3
 
 | Tool | Rule |
 |---|---|
-| Bash | `pred > budget` → DENY once per (session, command hash). **The identical command sent again → ALLOW**, so there is never a dead end |
-| Read | with no offset/limit and `stat > budget` → DENY once per path. The same Read again → ALLOW (read-before-edit still works). Read with offset/limit → ALLOW |
+| Bash | `pred > budget` and a ctx tool is reachable → DENY, **every time** (no repeat pass: a repeat would just flood the context). The alternative is the same command in `ctx_execute`, which runs it in the same directory and shell, so it always works. Class `interactive` (needs a TTY: editors, `git rebase -i`, …) → ALLOW |
+| Read | with no offset/limit and `stat > budget` → DENY every time. Alternatives: Read with `offset/limit` (the model picks the range; we cut nothing), or `ctx_execute` with `intent`. Read with offset/limit → ALLOW. Live check LV6: does a partial Read satisfy Claude Code's read-before-edit rule? |
 | Grep (content mode) | prediction over budget → DENY; the alternative is the same Grep with `output_mode:"count"`, or `ctx_execute rg` with an intent |
 | Glob | ALLOW |
 | WebFetch | ALLOW, except when the host's measured p90 is over the budget |
@@ -89,7 +89,6 @@ context-mode: predicted ~{b} B ({source}: n={n}, p90={p90}), budget 16384.
 Run the same command here; the full output is indexed and only the part that matches your intent returns.
 Tool: {exact tool name for this agent}
 {"language":"shell","code":<original command>,"intent":<the description field, or "state what you need">}
-If you must run it with Bash anyway, send the identical command again.
 ```
 
 The exact tool name comes from the adapter table (TECH-SPEC §3.8), so ToolSearch `select:` loads the deferred tool in one step.
@@ -106,6 +105,10 @@ agent, transport, tool, sig, AST node types, parse result + ms, pred, n, p90, de
 
 The issue debug report includes these rows (ADR-0014).
 
+### 4b. No dead end, by construction
+
+A deny happens only when the alternative can run in this session: on Claude Code the `mcp_tool` hook runs only while the server is connected; a subagent whose tool list has no ctx tool is never denied; interactive commands are never denied. A wrong (too high) prediction costs one turn: `ctx_execute` returns small output whole, and the real size goes into `sig_stats`, so the next prediction is right.
+
 ## Golden cases (GP3, besides the v1 issue cases)
 
 | Input | Expected |
@@ -115,8 +118,10 @@ The issue debug report includes these rows (ADR-0014).
 | `f(){ ls; }; f` | ParseError(func) → allow |
 | a `while read` loop over a 1 MB file | deny |
 | first `curl -s https://ifconfig.me` | allow + record |
+| the same large `find` sent twice | deny both times |
+| `git rebase -i HEAD~3` | allow (interactive) |
 | curl to a host with p90 = 40 KB | deny |
-| a 300 KB Read | deny; the identical Read again → allow |
+| a 300 KB Read | deny, also on the identical retry; Read with offset/limit → allow |
 | a Grep predicted at 50 KB | deny with `output_mode:count` |
 
 ## Open
