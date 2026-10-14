@@ -189,7 +189,7 @@ Removed as a tool: `ctx_insight` → CLI only (TECH-SPEC §3.11/G4).
 | G1 | **Changed 2026-10-13:** no v1.x line. v1 is frozen; all PRs (incl. the 33 "M" candidates) close at v2; their fixes are B requirements in v2 |
 | G2 | No tool-output replacement on any agent (Pi/OMP included); savings come from ctx_* tools only |
 | G3 | Resume is the `ctx_resume` tool; risk "model skips the hint" accepted |
-| G4 | 7 tools. **Changed 2026-10-13:** no user CLI and no npm. init/doctor/upgrade/uninstall are skills (`/context-mode:<name>`) that run one bundled script with `node` |
+| G4 | 9 tools (ctx_execute, ctx_batch, ctx_index, ctx_search, ctx_resume, ctx_stats, ctx_doctor, ctx_upgrade, ctx_purge); no user CLI and no npm. User commands are 3 skills: /ctx-stats, /ctx-doctor, /ctx-upgrade (uninstall is a ctx_upgrade mode). Changed 2026-10-14 (ADR-0010, Q16) |
 | G5 | Stats show bytes/tokens only; pricing catalog removed |
 | G6 | Security policy from `~/.context-mode/policy.json` + `.context-mode/policy.json`; `context-mode policy import claude` is explicit |
 | G7 | Windows `language:"shell"` = Git Bash; missing → hard error + doctor; PowerShell is its own language |

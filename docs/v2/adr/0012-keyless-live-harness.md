@@ -59,10 +59,14 @@ Hook timing comes from the v2 DB, because stream events carry no timestamp.
 
 **Agents that cannot run on the Mac** (not installed or not logged in) are listed as `SKIPPED` with the reason. GS2 is rewritten as "pass on every agent the harness could run; the rest SKIPPED with a reason". VS Code stays contract-only.
 
+**Kiro.** Same no-key rule as every other agent: never `KIRO_API_KEY`. Kiro's live case runs only through a `kiro-cli` the owner is already logged into on the Mac, the same shape as the Codex path (a locally logged-in CLI, no secret passed by the harness). Until `kiro-cli` is installed and logged in, Kiro prints `SKIPPED` with that reason, a documented gap, not a key.
+
 ## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
 
 - ADR-0017: default model `claude-sonnet-5 --effort low`; step mode runs only the cases whose `covers` match the changed files.
+- Q24: Kiro's live case runs only through a locally logged-in `kiro-cli`, or is `SKIPPED` with a documented reason; never `KIRO_API_KEY`.
 
 ## Changes
 
 r4 fix pass (B54): added the consecutive-skip count and the 3-skips-in-a-row release block, so `skip-live` cannot silently become permanent.
+r5 pass: added the Kiro keyless-or-SKIPPED line (Q24).

@@ -34,7 +34,7 @@ Live probe, 2026-10-14, Claude Code 2.1.283, model `claude-haiku-4-5-20251001`. 
 ## Alternatives considered
 
 - **No alwaysLoad:** every context-mode call needs a ToolSearch step first.
-- **alwaysLoad on all 7 tools:** about 8,000 chars always in context, which undoes the purpose of tool search.
+- **alwaysLoad on all 9 tools:** about 8,000 chars always in context, which undoes the purpose of tool search.
 
 ## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
 
