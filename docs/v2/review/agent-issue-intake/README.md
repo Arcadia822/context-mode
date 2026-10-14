@@ -4,6 +4,10 @@ These files come from `out/r2/round1/review/agent-issue-form.json` (round 1 agen
 
 Target branch: `main` (default branch). GitHub requires issue templates and `issues:` workflows to live on the default branch, so these files have no effect on `v2`.
 
+This is a carve-out from the "main stays frozen" rule: it covers only these non-code, issue-automation files (`.github/ISSUE_TEMPLATE/*`, `.github/workflows/issue-intake.yml`, `.github/scripts/issue-intake*.mjs`, `CONTRIBUTING.md`). No source code on `main` changes to ship this intake system.
+
+These files need an explicit owner accept — including the Q18 free-text wording above — before they merge to `main`, since they set the rules an agent must follow when it files an issue.
+
 ## Files
 
 - `.github/AGENT_ISSUE.md` — the format rules for an AI agent filing an issue. It names the exact body headings, the data to collect with `ctx_doctor`, the data to leave out, and the digest rule. This is the file an agent must read and follow; it is the core of this intake, since most issues come from `gh issue create` or the REST API, not the web form.
@@ -26,5 +30,9 @@ The issue template is written for an AI agent, not a person. The agent reading i
 
 - Byte rule for the digest (which lines, LF, no fence) needs to go in ADR-0014.
 - A `report:"issue"` input for `ctx_doctor` is proposed, to carry decision/hook-error rows, not yet built.
-- Free-text fields ("what happened", "steps") still need a redaction pass; only the `ctx_doctor` report block has one.
+- Free-text fields ("what happened", "steps") keep raw paths, logs and command output per Q18; only secrets are stripped there, by the agent and by `issue-intake.mjs`'s substring scan — they do not get the typed-scanner redaction the `ctx_doctor` report block has, and are not meant to.
 - ADR-0014 is status "Proposed", not yet "Accepted" — confirm acceptance before wiring this in.
+
+## Changes
+
+r4 fix pass: added the main-frozen carve-out for these files, the owner-accept gate, and corrected the open item that claimed free text needs a redaction pass (Q18 says the opposite: keep the raw detail, strip only secrets).
