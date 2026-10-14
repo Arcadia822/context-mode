@@ -38,10 +38,10 @@ Every outward step needs its own approval.
 | Agent | Command |
 |---|---|
 | Claude Code | `claude plugin marketplace update context-mode && claude plugin update context-mode@context-mode` (auto-update is off by default for third-party marketplaces) |
-| Codex | `codex plugin marketplace upgrade` (tested live in the distribution spike) |
+| Codex | re-write `config.toml`'s `[mcp_servers.context-mode*]` block to the v2 entry, then restart Codex to pick it up (Codex has no marketplace-upgrade command for a git-sourced plugin; the config.toml rewrite is `ctx_upgrade`'s step 4, same as every other config-rewrite agent) |
 | Gemini / Qwen | remove the v1 MCP entry, then `gemini extensions install https://github.com/mksglu/context-mode --ref release --auto-update` (Qwen: same form) |
 | Pi | `pi install git:github.com/mksglu/context-mode@release` (source only, test first) |
-| OpenCode 2 | `git+https://github.com/mksglu/context-mode.git#release` (disputed in the spike, test first) |
+| OpenCode 2 | remove the bare npm spec (`"context-mode"`) from `.plugin[]`, then add the v2 git spec: `"git+https://github.com/mksglu/context-mode.git#release"` (no npm for v2, owner rule; test first) |
 | Copilot CLI, VS Code, Kiro, ZCode | test first, then document |
 | npm users | `npm uninstall -g context-mode`, then the agent's git install. On first run, `ctx_doctor` lists the v1 leftovers and `ctx_upgrade` removes them |
 
@@ -64,16 +64,18 @@ There is one pure `detectV1(agent)` per agent. It returns `{file, path, reason}`
 | Gemini | `~/.gemini/settings.json` `.hooks.*` commands with `context-mode`; data `~/.gemini/context-mode/` | Remove the entries. Delete data **only after a prompt**, because Antigravity shares this dir |
 | Qwen | `~/.qwen/settings.json` `.hooks.*`; data `~/.qwen/context-mode/` | Same rule as Claude Code |
 | Copilot CLI | whole file `~/.copilot/hooks/context-mode.json`; data `~/.copilot/context-mode/` | Delete the file |
-| VS Code | whole file `<project>/.github/hooks/context-mode.json` | Delete the file (project scope) |
-| Kiro | `~/.kiro/agents/default.json` `.hooks.*` flat entries; data `~/.kiro/context-mode/` | Same rule as Claude Code |
-| Pi | `~/.pi/agent/settings.json` `packages[]` `"npm:context-mode"`; data `~/.pi/context-mode/` | Replace with the git entry |
-| OpenCode | `"context-mode"` in `.plugin[]` of the first config found | Keep it if v2 uses the same id |
-| ZCode | none | — |
+| VS Code | whole file `<project>/.github/hooks/context-mode.json`; data `<project>/.github/context-mode/sessions/` or `~/.vscode/context-mode/sessions/` | Delete the file and the session-data dirs (project scope). `ctx_doctor` also flags a leftover context-mode entry inside `.vscode/mcp.json`, the same way it flags a user-added MCP entry for Claude Code |
+| Kiro | `~/.kiro/agents/default.json` `.hooks.*` flat entries; data `~/.kiro/context-mode/` | Kiro's hooks are flat, not nested like Claude Code's — scan the flat `.hooks.*` list for any entry whose command contains `context-mode` **and** either a v1 script name or `context-mode hook`, and flag it; do not reuse Claude Code's nested-inner-hook matcher verbatim |
+| Pi | `~/.pi/agent/settings.json` `packages[]` `"npm:context-mode"`; data `~/.pi/context-mode/` | Replace with the git entry. `ctx_doctor`'s D4 check also re-scans `packages[]` for `"npm:context-mode"` **after** the git entry is added, and flags it as a leftover if still present — the git entry alone does not prove the stale npm entry was removed (same "two install trees" failure class as #901) |
+| OpenCode | `"context-mode"` in `.plugin[]` of the first config found | Remove the bare npm spec (same id, v1 shape); add the v2 git spec (`git+https://...#release`) — no npm for v2 |
+| ZCode | `~/.zcode/cli/config.json` and `~/.zcode/cli/hooks.json`, scanned for a context-mode-tagged entry (ZCode reuses the Codex-shaped config path, per #1268) | Remove the entries. (v1 claimed zero footprint here; that was wrong — report, don't claim zero) |
 | All | `~/.context-mode/` (v1 content), tmp files `context-mode-*` | Delete |
 
 Facts:
 - v1 **never** wrote routing text into user instruction files, and it has no markers. Those files are only reported, never edited.
-- Copilot CLI, VS Code and Codex v1 hooks call the global `context-mode` bin. After `npm uninstall -g`, these hooks fail until the cleanup runs. The release note says so.
+- Copilot CLI, VS Code, Codex, Gemini and Kiro v1 hooks all call the global `context-mode` bin. After `npm uninstall -g`, these hooks fail until the cleanup runs. The release note says so.
+- For every one of those agents, the user must run `ctx_doctor` then `ctx_upgrade` immediately after installing v2 and before using the agent again. This is not optional polish — it is the step that closes the breakage window between the `npm uninstall -g` and the hooks working again.
+- Qwen and Gemini have no CLI-native rollback command for this extension install. To roll back, the user manually re-adds the v1 MCP entry: for Gemini, `~/.gemini/settings.json` → `mcpServers.context-mode = {"command": "npx", "args": ["-y", "context-mode", "mcp"]}` (Qwen: same key under `~/.qwen/settings.json`). This is a known limitation, not an automated path; point users at the support runbook.
 
 ## Metrics (G23)
 
@@ -92,3 +94,7 @@ Facts:
 
 - Q14: `main` is protected by GitHub branch protection.
 - ADR-0017 R3: upgrade order is install v2 → `/ctx-upgrade` → `npm uninstall -g` last.
+
+## Changes
+
+r4 fix pass (A2, A29, A30, A37, A44, B22, B25, B28, B30, B76): Codex update is a config.toml rewrite, not a marketplace command; OpenCode cleanup/upgrade uses remove-npm-spec-then-add-git-spec; Kiro gets its own flat-hooks scan rule; Pi's stale npm `packages[]` entry is flagged even after the git entry is added; VS Code's session-data paths and `.vscode/mcp.json` are covered; ZCode gets a real footprint row instead of "none"; added the Qwen/Gemini manual-rollback note and the Gemini/Kiro hook-breakage fact; added the run-doctor-then-upgrade-immediately step.
