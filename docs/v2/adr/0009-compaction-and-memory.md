@@ -10,7 +10,8 @@
 - **JetBrains, "The Complexity Trap"** (arXiv 2508.21433): observation masking "halves cost … while matching … LLM summarization".
 - **Generative Agents:** score = recency decay + importance; take the best items that fit the budget.
 - **What Claude Code restores itself after compaction:** CLAUDE.md, auto memory, git status, the plan, and up to 5 recently changed files. Context that hooks added earlier is summarized away. So our block must **not** repeat file contents; paths are enough.
-- **Only re-injection point:** SessionStart with `source=compact`. PreCompact cannot inject. [V] live: a 234 B block reached the model whole.
+- **Only re-injection point for Claude Code, Codex, Qwen, ZCode:** `SessionStart(source=compact)`; `PreCompact` never injects there. [V] live: a 234 B block reached the model whole.
+- **A second path exists for Gemini, Copilot CLI, VS Code:** `PreCompact` writes a pending flag (`meta('pending_compact:'+sid)`); the next `UserPromptSubmit` hook performs the actual injection (see delivery table, §6). The "only re-injection point" claim above does not hold universally — it is scoped to the first group.
 
 ## v1 failures this fixes
 
@@ -23,6 +24,10 @@
 ## Decision
 
 The block is a deterministic function of this session's journal rows. No LLM, no regex, and no text is ever cut: whole items are selected, or an item becomes a pointer.
+
+### 0. Journal write path
+
+One write path into the one shared `context.db` per project: the server writes journal rows from its own `ctx_*` handlers at handler-return time, for its own tool calls. Hooks (`PostToolUse`, `PostToolUseFailure`) write rows only for other adapters' host tools. Both paths use the single `#645` path resolver. This retires the earlier "server never writes" rule.
 
 ### 1. Journal (in `context.db`)
 
@@ -41,7 +46,7 @@ Rows by kind:
 How the values are computed, with no regex:
 - **Canonical command:** a quote-aware state machine that only folds whitespace outside quotes.
 - **exit_code:** read from the first line of the error with `startsWith("Exit code ")` and a digit loop.
-- **Claude Code also registers PostToolUseFailure.** Without it, failures are never recorded.
+- **Claude Code also registers PostToolUseFailure.** Without it, failures from host tools are never recorded. (`ctx_*` tool-call failures are still recorded by the server itself, per §0.)
 
 ### 2. Candidates
 
@@ -87,6 +92,7 @@ more: ctx_search(queries:[…], scope:"session")
 
 - No clock, no user role, bare tool names, framed as data.
 - **Same rows → same bytes.** [V] 10 runs out of 10 identical, and rows from other sessions are ignored.
+- **The injected bytes must be byte-identical across every request within a turn** (#822 cache-prefix lesson): the block is computed once per turn, not re-rendered per request.
 
 ### 6. Delivery: one path per agent
 
@@ -95,7 +101,10 @@ more: ctx_search(queries:[…], scope:"session")
 | Claude Code, Codex, Qwen, ZCode | computed inside SessionStart(compact). No PreCompact hook, no precomputing |
 | Gemini, Copilot CLI, VS Code | the compaction hook writes `meta('pending_compact:'+sid)`. The next prompt hook runs `DELETE … RETURNING` in a `BEGIN IMMEDIATE` transaction, so the injection happens exactly once |
 | Pi | `session_compact` flag, then `before_agent_start`, once |
-| OpenCode 2, Kiro | live test first (r1 notes still apply) |
+| OpenCode 2 | live test first (r1 notes still apply) |
+| Kiro | not supported — no compaction signal of any kind; documented as a known gap for Q20+ (live test showed no `SessionStart(compact)` signal and no usable `PreCompact` substitute) |
+
+Qwen sits in the `SessionStart(compact)` row above, not a separate "no PreCompact hook" row: Qwen does have a `PreCompact` hook, but it fires too early to carry enough state for the Gemini/Copilot CLI/VS Code pending-flag pattern, so `SessionStart(compact)` stays the delivery path for Qwen. This is confirmed, not an open question.
 
 ### 7. Memory
 
@@ -111,6 +120,7 @@ more: ctx_search(queries:[…], scope:"session")
 - the same rows give identical bytes
 - an item over 640 B becomes a pointer, and `ctx_resume(seq)` returns it whole
 - not the user role (#1263), bare tool names (#1028), no "directive" text (#911, #1259)
+- a failed `ctx_execute` call with no `PostToolUse` fixture still produces a journal row (the server writes it at handler-return time, per §0)
 
 ## Open
 
@@ -120,3 +130,7 @@ more: ctx_search(queries:[…], scope:"session")
 
 - Q12: on OpenCode and Pi the state block is delivered once, through a channel that keeps the prompt cache stable.
 - Q2: unrelated to the 2,048 B state budget here; the global output cap is 16,384 B.
+
+## Changes
+
+- 2026-10-14 (fix-r4, owners.adr-b): added the single journal write path, §0 (A4); added the byte-identical-per-turn rule (A49); scoped the "only re-injection point" claim to Claude Code/Codex/Qwen/ZCode and named the Gemini/Copilot CLI/VS Code second path (B26); resolved Kiro as unsupported with a documented gap, and clarified Qwen's delivery path (B12, B23).
