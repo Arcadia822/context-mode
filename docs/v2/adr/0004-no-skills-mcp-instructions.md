@@ -1,6 +1,6 @@
 # ADR-0004: No routing skills and no per-agent instruction files; prompts ship as MCP server instructions + tool descriptions
 
-- Status: Proposed (2026-10-14). The user asked on 2026-10-14 for no skill file per adapter. Open details: Q2, Q7, Q10 and Q11 in TECH-SPEC §10.
+- Status: Proposed (2026-10-14). The user asked on 2026-10-14 for no skill file per adapter. Open details: Q2, Q10 and Q11 in TECH-SPEC §10 (Q7, Pi's plugin mechanism, is resolved: `before_agent_start`).
 - Related: TECH-SPEC §3 · ADR-0005 · ADR-0006
 
 ## Context
@@ -29,11 +29,12 @@ MCP defines one portable channel for this: `InitializeResult.instructions`.
 
 Which agents pass `instructions` to the model is in TECH-SPEC §3.1. Summary:
 - **Confirmed** in source or by a live probe: Claude Code, Gemini CLI, Qwen Code, OpenCode 2, VS Code Copilot.
-- **Pi:** first line only, through its MCP path.
+- **Pi:** does not receive `instructions` over MCP in v2. v2 runs Pi as an in-process plugin, not over MCP (TECH-SPEC §3.1, §3.9; matches Decision 5 below), so it gets the same `instructions.md` bytes through its `before_agent_start` plugin hook instead.
 - **Codex:** the instructions are wired to the tool namespace, but a live probe saw nothing at session start.
-- **Copilot CLI:** probable (github/copilot-cli#1579 closed as completed); no source check.
+- **Copilot CLI:** verified by live probe (`copilot plugin install` on Copilot CLI 1.0.60, same method v1 used in 9f34c6f1): a plugin can register MCP servers and hooks, and `InitializeResult.instructions` reaches the model. This replaces the earlier "probable; no source check" line.
 - **Not supported:** Kiro (kirodotdev/Kiro#11096 is still open).
 - **No evidence:** ZCode.
+- **This project's own routing-block style.** This repo's maintainer-facing `CLAUDE.md` uses a MANDATORY/BLOCKED caps-heavy routing block. That pattern is named in #946 as one that can trip AI safety classifiers. `CLAUDE.md` is in this ADR's delete scope for Claude Code (it is one of the 13 per-agent routing files in the Context table above) and must be rewritten in plain style, not caps-heavy MANDATORY/BLOCKED blocks, when decision 4 is carried out.
 
 ## Decision
 
@@ -50,7 +51,7 @@ Which agents pass `instructions` to the model is in TECH-SPEC §3.1. Summary:
 
    The maintainer skill `.claude/skills/context-mode-ops` is removed from the repo too (Q4, decided 2026-10-14).
 4. Agents that ignore `instructions` (Kiro, possibly ZCode) get routing from tool descriptions only. No steering file is added for them.
-5. Pi runs as an in-process plugin, not over MCP. It gets the same `instructions.md` bytes through its single plugin mechanism. Which mechanism that is: Q7.
+5. Pi runs as an in-process plugin, not over MCP. It gets the same `instructions.md` bytes through its `before_agent_start` plugin hook (TECH-SPEC §3.1, §3.9).
 
 ## Consequences
 
@@ -58,9 +59,14 @@ Which agents pass `instructions` to the model is in TECH-SPEC §3.1. Summary:
 - On Claude Code with tool search on, `instructions` is the **only** context-mode text the model sees before it searches for a tool. This is verified by a live probe (TECH-SPEC §3.1). It makes ADR-0006 necessary.
 - On Codex, the live probe showed neither instructions nor tool descriptions at session start. Routing quality on Codex has to be measured in E2E-live before release.
 - User-owned instruction files are never touched again. This removes a v1 bug class: install and upgrade overwrote user hooks and config (#1235, #1239, #1160).
+- On OpenCode 2, the 3 command skills have no slash-command path: OpenCode 2 only lets the model call a `skill` tool with a matching id (`packages/core/src/tool/plugin/skill.ts`, pinned `1438073`). A user cannot type `/ctx-stats` there and be guaranteed it runs; the model has to decide to call `skill` with that id. This gap is accepted, named here, and detailed in TECH-SPEC §3.9 (S-SKILLS), the same pattern as GS5's other per-agent carve-outs.
 
 ## Alternatives considered
 
 - **Per-agent instruction files (AGENTS.md etc.).** Rejected: 13 diverging copies, written into user-owned files.
 - **Skills.** Rejected: each agent packages them differently, MCP-only agents never load them, and they need one copy per agent.
 - **MCP prompts.** Rejected for routing: the user has to invoke them. One prompt is kept as a user command: `ctx-stats` (TECH-SPEC §3.9).
+
+## Changes
+
+- r4: scoped this project's own `CLAUDE.md` into the delete/rewrite list (A56); verified Copilot CLI's `instructions` support by live probe instead of "probable" (B9); resolved Pi's plugin mechanism as `before_agent_start`, closing Q7 (B19); named the OpenCode 2 command-skill gap explicitly (B16).
