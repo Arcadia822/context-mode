@@ -38,4 +38,4 @@ Live probe, 2026-10-14, Claude Code 2.1.283, model `claude-haiku-4-5-20251001`. 
 
 ## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
 
-- Q19: re-probe alwaysLoad on Opus and Sonnet in the keyless harness before Accepted.
+- Q19: re-probe alwaysLoad on Opus and Sonnet in the keyless harness before Accepted. Confirmed (fix-r4, B68): this re-probe must run before release sign-off; this ADR carries no v1-behavior risk forward, so no other doc change is needed here.
