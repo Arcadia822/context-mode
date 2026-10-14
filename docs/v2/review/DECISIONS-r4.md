@@ -256,3 +256,45 @@ One row per root cause, merged from 4 researchers (out/fix-r4/res-*.json: docs-A
 | I2-24 | Tool set: Leave ctx_forget out of the v2.0 tool set; revisit only on explicit owner request. |
 
 Key fixes: Q1 cites 752d5236 (#593 periodic re-fire), not 855e330d (#532, the cause of the flooding). Q6 is "every server checkpoints on its own close" (939c5ca8). Q7 drops the #962 size-cap citation; the size cap number is open as Q7b. Q5 is new scope beyond v1, not parity.
+
+## Issue rows decided in fix-r4b
+
+All remaining `needs-decision` rows in `ISSUE-OUTCOMES-r4.md` (the 38 rows not already settled by `out/fix-r4/res-issues-1.json` / `res-issues-2.json`) are decided below. Full evidence and edits are in `out/fix-r4/res-issues-0.json`. `needs-decision` count: 39 -> 0.
+
+| Rows | Decision | Root cause | Evidence |
+|---|---|---|---|
+| 1280 | closed-by-design | D2 bundled-deps policy covers turndown regardless of implementation-verification gap | D2 is an existing owner decision, not contingent on finding a historical install commit; no bundling regression was found either. |
+| 1262 | covered-by-test with new GP9 case | GP9 lifecycle case missing for parent-liveness child cleanup | 939c5ca8 (#103), 77e22a46 (#854/#855), dfff7b87 (#862) are the v1 lifecycle-guard lineage; add zero-children + grandparent-kill case to lifecycle.test.ts. |
+| 1248 | closed-by-design | Heartbeat-free readiness, ties to #1213's read-only stats decision | Simplest single path: one row at connect + PID liveness via process.kill, no timer, so there is no sibling-DB scan to guard against. Add to TECH-SPEC D3. |
+| 1214 | closed-by-design | events.md cross-project mechanism removed by D8 | D8 removes the shared events.md file this bug depended on; fcc44834/7b609f6a fixed a different (stale-reinjection) bug, but the file itself is gone in v2's single-DB design. |
+| 1210 | closed-by-design | Codex Windows project-source resolution | Q11: one named source, doctor reports a missing source, no silent fallback — the mechanism that caused #1210 (silent fallback to the mtime heuristic) is removed regardless of a live Codex-on-Windows roots/list test. |
+| 1204 | covered-by-test with new GP case | ctx_search offset-paging page size vs ADR-0016's global cap | Add a GP4-style case asserting each ctx_search page stays under the 16,384 B cap (Q2). |
+| 1191 | closed-by-design | Self-heal removal (ADR-0002/P1) covers #1191 and #1215 as one mechanism | d08fe6a6/8d840973, fb55ed03 (#577), a342dd54/2965d246 (#727/#728) show repeated narrowing of a fragile heal script; ADR-0002 drops it entirely, replaced by `ctx doctor`. |
+| 1185 | covered-by-test with new GP case | Worktree-label isolation (D3/D4/D12) has no GP test yet | f6166631 is an unrelated grep match; write a GP case with two concurrent worktrees asserting label separation and own-session ranking. |
+| 1075 | covered-by-test with new GP case | ctx_execute_file deny-anchor parsing has only a template placeholder verdict | Add the real case: deny Read(~/secret/**), call ctx_execute_file on ~/secret/a, assert deny. |
+| 1085 | closed-by-design | OpenCode system-message injection must merge, not append | D9/D11 keep 1-2 injected lines; state explicitly they merge into the existing system entry on OpenCode (no second message). |
+| 1100 | covered-by-test with new GP9 case | Generic shutdown contract must survive a re-exec proxy rewrite | dfff7b87 (#862), 77e22a46 (#854/#855) fixed the Linux Bun path; add a runtime-independent GP9 case for the stdin-close -> exit <2s contract. |
+| 1119 | closed-by-design | ctx_search invalid/negative limit | Matches D8/D10: fail loud with a schema error, never silently clamp. |
+| 1151, 952, 1252, 962 | closed-by-design | D17 stats-accounting family (binary bytes, redirected bytes, index growth) | D17 ("count only bytes kept from model text") covers all four as one accounting rule; index/vocab growth uses a fixed count cap with oldest-first eviction, never a content-shape regex. Add D17 to this file as a confirmed decision. |
+| 1163 | covered-by-test with new GP case | Snippet cut points must be code-point safe | 6f699fac/678658af (#789) fixed byte-accurate caps; keep that cap and layer a code-point boundary check on top; add a multi-byte UTF-16 boundary case. |
+| 1068 | closed-by-design | ctx_batch_execute fs-byte marker leaks to grandchildren | c2d390a5's child-inherited marker must move to a private fd/IPC channel, never argv/env. |
+| 1052 | closed-by-design | Adapter tool-name alias table undocumented | Add the canonical-name alias table to ADR-0008 with one contract test per adapter. |
+| 1039 | closed-by-design | Honouring HTTP_PROXY again must not reopen the DNS-rebinding gap | Q19: proxy env yes, SSRF check on every hop. 42448389 (CR-confirmed fix on #476) is the commit not to re-break: reuse its dns-guard pattern on the proxy's resolved target. |
+| 1031 | closed-by-design | Combined tool-description budget | Q13's per-tool 1,024-char cap times the fixed v2.0 tool count already bounds the total; no new constant needed. |
+| 1017 | closed-by-design | ADR-0007 needs concrete sources, not just a rule | 98d239b7 names Codex's plugin-manager root; add it and Copilot CLI's to the ADR-0007 table so Q11 is fully instantiated. |
+| 993 | closed-by-design | Generated hooks.json must not hard-code one shell | 89f4e736/a2c82c62/adcc2cc8 (#782/#788) show Windows shell quirks recur; emit one cross-platform script, no shell-specific branches. |
+| 954 | closed-by-design | One shared path-containment primitive for every exec-shaped tool | d1ae5625 (#852, isPathInsideProject) becomes the single exported check for ctx_execute_file, ctx_batch_execute and ctx_execute; add a GP7 case running one fixture through all three. |
+| 944 | closed-by-design | v2 only reads Claude Code's own deny rules | Already decided at Q19: Claude Code deny rules only, no other host's permission profile. |
+| 914 | wont-fix | Hit-label/ranking format, same question as #895/#914 | Already decided in fix-r4 (res-issues-2.json rows 895/874): D12 stays OPEN, no new finding; #914 gets the same verdict. |
+| 889 | covered-by-test | Tarball-hygiene regression test must survive D2's script removal | f9c8d864 ("tarball hygiene contract (F2)") carries forward into v2 CI unchanged. |
+| 867 | closed-by-design | Mid-session SQLite self-heal is knowingly dropped by P1 | 50aafdce/a5c449df/8a1607e9 show this took real effort in v1; state explicitly that P1 trades it for hard-error + `ctx doctor`, not a silent loss. |
+| 1294 | closed-by-design | Directory-walk symlink-escape check uses a broken string-prefix test | f7499570 (#687) introduced the broken check; d1ae5625 (#852) already fixed the correct version (isPathInsideProject) elsewhere. Route all containment through isPathInsideProject and delete the duplicate. |
+| 1286 | wont-fix | FORCE_COLOR/cwd-removal executor request has no prior fix to regress | No commit found; this is a new feature request, not a v1 regression. Out of scope this round. |
+| 1277 | closed-by-design | Owner-PID liveness must not spawn `ps` | Matches D6/Q7: read /proc or call process.kill directly, no subprocess, no fallback chain. |
+| 1266 | covered-by-test | Pi doctor path-check parity | Reuse the existing per-adapter doctor real-path check (D4/D13 pattern) for Pi. |
+| 1239 | closed-by-design | Install/upgrade must not remove user-owned hook entries | Already required by ADR-0017 R4: user hooks, permissions.deny, MCP entries kept and reported, never removed. |
+| 1234 | closed-by-design | Per-adapter fixed detection source, informed by v1's #542 | 7e67952c/a9869a60/92a6f2a6 (#542) show clientInfo must outrank config-dir heuristics; document per-adapter source in the ADR-0007 table so #542 cannot silently reopen. |
+| 1165 | closed-by-design | ctx_execute_file sandbox state on Codex | v2 reads Codex's own sandbox state rather than maintaining a second parallel check. |
+| 1127 | closed-by-design | Code-echo-removed/summary-only rule is global, not DeepSeek-specific | Q19's rule applies to every adapter with no per-host knob — no fallback chain, and keeps raw output out of subagent context. |
+| 970 | closed-by-design | D6 PID-liveness design already answers this | Q7/D6 (age + live owner PID, size cap) is the confirmed decision; no new mechanism needed. |
+| 1035 | closed-by-design | PI_CODING_AGENT_DIR as the one named Pi doctor/install source | Modeled on Q11's "one named source, no fallback chain," applied by analogy to locating an installed Pi binary. |
