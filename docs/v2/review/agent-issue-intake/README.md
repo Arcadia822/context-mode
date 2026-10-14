@@ -24,7 +24,7 @@ Finding 1 in `agent-issue-form.json`: an issue form (dropdowns, required fields)
 
 ## Rule this intake follows
 
-The issue template is written for an AI agent, not a person. The agent reading it must follow our rules and send the most debug data it can, through `ctx_doctor`'s typed, redacted report — never free text with raw paths, commands, or secrets.
+The issue template is written for an AI agent, not a person. The agent reading it must send the most debug data it can: the full `ctx_doctor` typed report, plus real paths, logs, and command output in the free-text sections. Only secrets are stripped, everywhere (Q18).
 
 ## Open items from the review (see `agent-issue-form.json` for full evidence)
 
@@ -35,4 +35,4 @@ The issue template is written for an AI agent, not a person. The agent reading i
 
 ## Changes
 
-r4 fix pass: added the main-frozen carve-out for these files, the owner-accept gate, and corrected the open item that claimed free text needs a redaction pass (Q18 says the opposite: keep the raw detail, strip only secrets).
+r4 fix pass: added the main-frozen carve-out for these files, the owner-accept gate, and corrected the open item that claimed free text needs a redaction pass (Q18 says the opposite: keep the raw detail, strip only secrets). Also fixed a leftover self-contradiction in "Rule this intake follows" (it still said "never free text with raw paths, commands, or secrets"), and fixed the same stale wording in `bug.yml`'s intro line, "What happened" hint, and checkbox label, which still told the agent to leave out paths/logs/transcripts.
