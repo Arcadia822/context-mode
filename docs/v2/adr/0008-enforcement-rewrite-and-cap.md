@@ -25,7 +25,7 @@ No new deny categories are added. The r2 deny of any Bash call whose predicted o
 | 2 | Any curl/wget in a compound command → the whole command replaced | Decide per pipeline. Allow when the body does not reach the tool output: written to a file (`-o file`, `-O`, `>`), or the pipeline ends in a bounded sink (`head -c N`, `wc`, `grep -c`, `jq` with a scalar …). Deny only when the body reaches stdout | #1269, #1125, #166, #792, #817 |
 | 3 | `modify` to an `echo` command | A real deny with a reason (each agent's native field, ADR-0001 adapter table) | #1134 (Codex auto-review flagged the echo as instruction drift) |
 | 4 | `isMCPReady()`: a machine-global PID marker file | Claude Code: the PreToolUse hook is `type:"mcp_tool"`, so it runs only while this session's server is connected; otherwise the tool runs. Pi, OpenCode 2: in-process, availability is known. Other agents: the server writes a `ready` row (agent, worktree, pid, heartbeat every 30 s) in `context.db`; the hook denies only if a row for the same agent and worktree is younger than 60 s | #1055, #1053, #347, #173, #230. Live check LV7: two concurrent sessions of a command-hook agent in one worktree |
-| 5 | Subagents denied although they cannot call ctx tools | Read the subagent's tool list (`agent_type` → the agent file's `tools:`). No ctx tool → allow and journal | #794, #1037 |
+| 5 | Subagents denied although they cannot call ctx tools | Subagents get the same output budget; the deny or rewrite names an alternative the subagent can call (ADR-0016). Never a plain allow | #794, #1037 |
 | 6 | WebFetch denied for every URL | A host table that is never denied (the claude.ai artifact hosts). A user policy file with an `allowHosts` list | #1006, #984, #938, #908, #843 |
 | 7 | Deny/hint state "once per process"; parallel batches slip through | Stateless per call for denies, so every call in a parallel batch is checked. Hints "once per session" are keyed by `session_id` in `context.db` | #1003, #1267 |
 | 8 | Routing text injected into subagent prompts | No injection; routing lives in the tool descriptions (ADR-0004) | #967, #832 |
@@ -62,7 +62,7 @@ Constructs the parser does not handle (`[[`, `((`, `case`, functions, process su
 | `npm ci && curl -s https://x.io/a.json && npm test` | deny; the alternative runs the whole command in `ctx_execute` | #1269 |
 | `./gradlew build` | deny; the alternative has no `tail` | — |
 | WebFetch of a claude.ai artifact URL | allow | #1006 |
-| WebFetch from a subagent without ctx tools | allow | #794 |
+| WebFetch from a subagent without ctx tools | per ADR-0016 case B/C, never a plain allow | #794 |
 | Claude Code with the server not connected | the tool runs | #173 |
 | Read of a 300 KB file | hint, not deny | — |
 
