@@ -47,6 +47,20 @@ Tool: <exact tool name for this agent>
 - For WebFetch the message names `ctx_fetch_and_index` with the URL, then `ctx_search`.
 - **[V] live on Haiku:** the deny reached the model as an `is_error` tool result, and the model used the exact alternative.
 
+**Bash-command-redirect-deny row, per adapter:**
+
+| Adapter | `modifiedArgs` support |
+|---|---|
+| Claude Code | yes (ADR-0001 adapter table) |
+| Codex | yes |
+| Copilot CLI | **unverified** — confirm live before release |
+
+Until confirmed, Copilot CLI uses the plain deny-with-reason path (no `modifiedArgs`), same as any adapter without rewrite support.
+
+## Cross-reference: large-output selection (ADR-0016)
+
+ADR-0016's wrapper/replacement text describes its chunk selection as "the same selection as ADR-0009." Precisely: it shares the greedy-shape with ADR-0009 (budgeted lazy greedy, whole items only, nothing cut); the scoring formula differs (ADR-0016 ranks by BM25 against the stated intent, ADR-0009 scores by `weight x recency x repeat` — see ADR-0009 §3). Both pass through `OUTPUT_CAP = 16384` (Q2).
+
 ## Parse errors
 
 Constructs the parser does not handle (`[[`, `((`, `case`, functions, process substitution) raise `ParseError(code)`. Result: allow and journal the code, as one documented path. GP3 lists every code.
@@ -69,12 +83,37 @@ Constructs the parser does not handle (`[[`, `((`, `case`, functions, process su
 
 ## Open
 
-- **Hook budget (GS6):** bare Node is 45.6 ms p95 on the owner's Mac, so command hooks cannot meet "p95 ≤ 40 ms wall". Proposal: "≤ 20 ms CPU on top of bare Node" for the command-hook agents; Claude Code uses `mcp_tool` and starts no process.
+- **Hook budget (GS6):** bare Node is 45.6 ms p95 on the owner's Mac, so command hooks cannot meet "p95 ≤ 40 ms wall". Proposal: "≤ 20 ms CPU on top of bare Node" for the command-hook agents; Claude Code uses `mcp_tool` and starts no process. **Open question for the owner** (not yet answered by DECISIONS-r3 Q1-Q19, despite being load-bearing for GS6/GP3 pass criteria): one ratified end-to-end wall-clock number per agent class. Once answered, this line changes from "Proposal" to a dated decision, so later lint/decisions passes treat GS6 as settled instead of re-finding it as open every round.
 - LV7 (above), and deny compliance on Opus and Sonnet, run in the live harness (ADR-0012).
+- **Gap (cross-reference, owned by TECH-SPEC §9 G25 row):** OpenCode 2 has no v1 hook-fix history to validate against, so GP-LIVE-HOOKS for OpenCode 2 needs purpose-built test cases rather than regression replays of old issues.
+
+## Cross-reference: Claude Code Case B (ADR-0016)
+
+ADR-0016's adapter table cell for Claude Code Case B is "`updatedInput` + `allow` (LV1)". Per Q3 (below) and v1 commit `4bc292fc`, Claude Code ignores `updatedInput` on Bash, so this cell should read: deny with the rewritten command in the reason text (no `updatedInput`), matching the "Deny message" section above. The "LV1" label in that row should be removed — LV1 as described (allow + updatedInput) is already known-failing on Claude Code, not merely unverified. (Edit owned by ADR-0016; recorded here because ADR-0008 is the decision's other related doc.)
 
 ## r3 decisions (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
 
 - **Q4 parse errors:** deny when a user deny rule could match the command; allow only when the curl/HTTP rule is the only one that applies.
-- **Q5 full v1 scope:** the parser unwraps sudo, env, time, nice, timeout, xargs, command, `bash -c`/`sh -c` strings and `$( )` / backticks before it reads argv0. The #166 silent/verbose curl checks stay (v1 routing.mjs:745-765). User `permissions.deny` also checks ctx tool input.
+- **Q5 new scope (not v1 parity):** v1 only detected curl/wget directly (`routing.mjs:735-765`). v2 unwraps sudo, env, time, nice, timeout, xargs, command, `bash -c`/`sh -c` strings and `$( )` / backticks before it reads argv0, so curl/wget behind any of those wrappers is also caught. The #166 silent/verbose curl checks stay (v1 `routing.mjs:745-765`). User `permissions.deny` also checks ctx tool input.
+
+  GP3 wrapper cases (one per token):
+
+  | Wrapper | Input | Expected |
+  |---|---|---|
+  | `sudo` | `sudo curl -s https://x.io/a.json` | deny |
+  | `env` | `env FOO=1 curl -s https://x.io/a.json` | deny |
+  | `time` | `time curl -s https://x.io/a.json` | deny |
+  | `nice` | `nice -n 10 curl -s https://x.io/a.json` | deny |
+  | `timeout` | `timeout 5 curl -s https://x.io/a.json` | deny |
+  | `xargs` | `echo url \| xargs curl -s` | deny |
+  | `command` | `command curl -s https://x.io/a.json` | deny |
+  | `bash -c` | `bash -c "curl -s https://x.io/a.json"` | deny |
+  | `sh -c` | `sh -c "curl -s https://x.io/a.json"` | deny |
+  | `$( )` | `echo "$(curl -s https://x.io/a.json)"` | deny |
+  | backticks | `` echo `curl -s https://x.io/a.json` `` | deny |
 - **Q2 threshold:** one global `OUTPUT_CAP = 16384`.
 - **Q19:** same routing on every agent, not the same text; hints in parallel batches are per call.
+
+## Changes
+
+- 2026-10-14 (fix-r4, owners.adr-b): Q5 reworded as new scope, not v1 parity, with per-wrapper GP3 cases (A6); Copilot CLI added to the per-adapter deny-row with its `modifiedArgs` support marked unverified (A13); the ADR-0016 selection claim and Case B table cell corrected by cross-reference (A33, B3); GS6 hook budget routed to the owner as an open question (B46); OpenCode 2 G25 gap cross-referenced (B18).
