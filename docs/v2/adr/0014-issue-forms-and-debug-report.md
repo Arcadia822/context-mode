@@ -39,7 +39,7 @@ The report is a fixed list of `key: value` lines:
 
 - Every value passes a typed scanner: int, semver, hex40, date, enum, bool, or a JSON pointer whose segments are in our own generated schema.
 - A value that fails the scanner becomes `<invalid>`. It is dropped whole, never cut.
-- Paths, env values, config values, file bodies, error messages and command lines **cannot** reach the output.
+- (superseded by Q18, see below) Paths, env values, config values, file bodies, error messages and command lines cannot reach the output.
 - Error codes come from a closed enum in `src/errors.ts`.
 
 ### 4. Storage
@@ -77,3 +77,7 @@ GP11 runs as a pure-function golden test with no key. It seeds secrets (`TOKEN=â
 - the digest verifies
 
 The local harness (ADR-0012) also checks that the block reaches the model byte for byte, and checks the degraded start with `node:sqlite` blocked.
+
+## r3 decision Q18 (2026-10-14): maximum debug data, only secrets stripped
+
+The reporter is an AI agent (owner rule). It must send: the full `ctx_doctor` report, paths, logs, versions, hook and deny journal rows, the steps, and transcript excerpts of the failing turns. Only secrets are removed: tokens, keys, `.env` values, Authorization headers. The intake files are in `docs/v2/review/agent-issue-intake/` (AGENT_ISSUE.md, BODY-FORMAT.md, DO-NOT-SEND.md, VALIDATION.md, issue-intake.yml + scripts); they must match this rule.

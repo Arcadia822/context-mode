@@ -63,3 +63,7 @@ Cases:
 - two install trees
 
 Golden: the doctor table, the upgrade diff, rollback, and no baked paths.
+
+## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+
+- Q16: uninstall is a mode of `ctx_upgrade` (`mode: uninstall`): stops the server, removes the cache and context-mode's own config entries; user data is kept unless the user confirms.

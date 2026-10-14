@@ -40,3 +40,9 @@
 
 - **Keep two DBs.** Rejected: `verify-single-db.md` found no benefit.
 - **better-sqlite3.** Rejected: its native ABI breaks were a recurring v1 failure class.
+
+## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+
+- Q6: the last server to close runs the WAL checkpoint, plus a checkpoint on close (v1 939c5ca8); GP8 has a 4-writer case.
+- Q7: retention = age + live owner PID + a size cap (#962).
+- Q10: minimum Node set by spike S-NODE.

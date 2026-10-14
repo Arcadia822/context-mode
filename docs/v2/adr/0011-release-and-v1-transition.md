@@ -87,3 +87,8 @@ Facts:
 - It merges the results into `metrics/traffic.json` by timestamp. The 14-day window spans two weekly runs, so one failed run loses nothing.
 - It commits only when the file changed.
 - Retire `update-stats.yml`: it adds all-time npm counts to 14-day clone counts every 6 hours. Point the README badges at `metrics/traffic.json`.
+
+## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+
+- Q14: `main` is protected by GitHub branch protection.
+- ADR-0017 R3: upgrade order is install v2 → `/ctx-upgrade` → `npm uninstall -g` last.

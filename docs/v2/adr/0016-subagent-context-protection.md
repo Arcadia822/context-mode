@@ -24,7 +24,7 @@ A subagent has its own context window. If a big tool output lands there, the sub
 | Case | Subagent has | Mechanism | Context gets |
 |---|---|---|---|
 | A | ctx tools | the same deny as the main session (ADR-0008) | only what ctx tools return |
-| B | Bash, no ctx tools | **rewrite**: PreToolUse returns `allow` + `updatedInput`. The command becomes `node <bundle>/run.mjs <base64 of the original>`. The wrapper runs the original command unchanged (same cwd, same exit code), indexes the full output in `context.db`, and prints the chunks that best match the intent (the call's `description` field) up to the budget, then one line: `more: node <bundle>/search.mjs <source-id> "<terms>"`. The subagent can run that line with its own Bash | selected whole chunks + a follow-up it can call |
+| B | Bash, no ctx tools | **deny with the rewritten command** (Q3: Claude Code ignores `allow` + `updatedInput` for Bash, v1 4bc292fc). The reason carries the exact wrapper command; The command becomes `node <bundle>/run.mjs <base64 of the original>`. The wrapper runs the original command unchanged (same cwd, same exit code), indexes the full output in `context.db`, and prints the chunks that best match the intent (the call's `description` field) up to the budget, then one line: `more: node <bundle>/search.mjs <source-id> "<terms>"`. The subagent can run that line with its own Bash | selected whole chunks + a follow-up it can call |
 | C | neither ctx tools nor Bash | **replace after the run**: PostToolUse `updatedToolOutput` (Claude Code, all tools). The full output is indexed; the subagent sees the best-matching whole chunks up to the budget plus the source id. For Read, the deny names Read with `offset`/`limit`, which the subagent has | selected whole chunks |
 
 No case cuts text: the wrapper and the replacement **select whole chunks** by BM25 score against the intent, under a byte budget (budgeted greedy, the same selection as ADR-0009). Nothing is truncated mid-chunk.
@@ -40,7 +40,7 @@ The same applies to WebFetch and to the curl/wget/build cases of ADR-0008 in eve
 | Pi, OpenCode 2 | yes | mutate input in-process | replace result in-process |
 | Codex, Gemini, Qwen | yes | rewrite supported | replace only as a reason/error text; the selected chunks go in that text |
 | VS Code, ZCode | yes | rewrite supported | no output replacement: case C falls to the deny with an alternative the subagent has (Read `offset`/`limit`, Grep `output_mode:"count"`) |
-| Kiro | hint only (no rewrite, no replace) | — | documented gap |
+| Kiro | deny (Kiro supports deny) with the alternative the subagent has; no hint-only path, because the MUST forbids large output in any context | — | — |
 
 ## Live checks (ADR-0012 harness)
 
@@ -59,3 +59,9 @@ If LV1 fails on Claude Code, case B uses case C instead, decided once in the ada
 - Subagent type with `tools: Read` + Read of a 300 KB file → deny naming Read with `offset`/`limit`
 - Subagent type with no `tools:` line → same deny as the main session
 - Unknown built-in type before LV8 → case B or C, never a plain allow
+
+## r3 decisions (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+
+- **Q3:** case B never uses `allow` + `updatedInput`. The deny reason carries the full rewritten wrapper command; the subagent runs it with its own Bash.
+- **Q1:** case C also covers other MCP servers' tools (`mcp__<other>__*`).
+- **Q2:** budget = the global `OUTPUT_CAP = 16384`.

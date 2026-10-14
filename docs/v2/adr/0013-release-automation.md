@@ -59,3 +59,8 @@ On `v2`:
 - Releases are frequent, so there is no per-release live-test gate in CI. The skill runs the live harness by default; `skip-live` is allowed and is written into the release notes.
 - `traffic.yml` and `weekly.yml` go to `main` (owner: "main'e ekleyelim").
 - No signed tags, no `release` environment approval.
+
+## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+
+- Q14: branch protection on `main`.
+- ADR-0017: `/release` runs the full live set on Sonnet low, incl. the v1-migration cases.

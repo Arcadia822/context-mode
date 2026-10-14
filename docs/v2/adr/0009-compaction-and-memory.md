@@ -115,3 +115,8 @@ more: ctx_search(queries:[…], scope:"session")
 ## Open
 
 - Hook budget: the whole SessionStart process is 48.6 ms p95, of which bare Node is 45.6 ms. See ADR-0008 "Open".
+
+## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+
+- Q12: on OpenCode and Pi the state block is delivered once, through a channel that keeps the prompt cache stable.
+- Q2: unrelated to the 2,048 B state budget here; the global output cap is 16,384 B.

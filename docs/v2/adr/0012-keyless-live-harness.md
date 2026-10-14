@@ -58,3 +58,7 @@ Hook timing comes from the v2 DB, because stream events carry no timestamp.
 **Release (ADR-0013).** The `/release` skill runs this harness before it starts the release workflow. No signed tag.
 
 **Agents that cannot run on the Mac** (not installed or not logged in) are listed as `SKIPPED` with the reason. GS2 is rewritten as "pass on every agent the harness could run; the rest SKIPPED with a reason". VS Code stays contract-only.
+
+## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+
+- ADR-0017: default model `claude-sonnet-5 --effort low`; step mode runs only the cases whose `covers` match the changed files.

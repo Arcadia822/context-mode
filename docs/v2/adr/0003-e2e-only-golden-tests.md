@@ -1,4 +1,4 @@
-# ADR-0003: E2E and E2E-style golden tests only; unit tests are deleted
+# ADR-0003: E2E and E2E-style golden tests; v1 unit tests stay until v2 passes the kept ones
 
 - Status: Proposed (2026-10-14). The user decided "delete all unit tests, keep only E2E and E2E-style, golden path" on 2026-10-14. Open details: Q1, Q8 and Q9 in TECH-SPEC §10.
 - Related: TECH-SPEC §6 · `tickets/v2-test-ledger.md` · PRD-v2 §13 (superseded by this ADR)
@@ -46,3 +46,9 @@ Most v2 requirements (B rows in the issue map) are contract breaks at a process 
 - **Keep unit tests for pure algorithms.** Rejected by the user's decision. Item 4 covers these algorithms through output.
 - **In-process snapshot tests.** Rejected: they do not cross a process boundary.
 - **E2E-live on every PR.** Rejected: it is non-deterministic and costly. Q8.
+
+## r2 (2026-10-14, owner): supersedes the deletion decision above
+
+- v1 unit tests are **not** deleted at the start. `docs/v2/review/TEST-TRIAGE-r2.md` classifies the 209 files: 131 KEEP-PASS, 52 PORT, 26 RETIRED.
+- v2 is built until every KEEP-PASS test passes (after a mechanical import-path port where needed). PORT tests are rewritten; RETIRED tests are removed with their ADR named.
+- E2E-style GP1–GP11 and the live harness are added on top (ADR-0017). The "no file under e2e/ imports src/" rule stays for the E2E layer only.

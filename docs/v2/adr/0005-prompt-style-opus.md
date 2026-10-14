@@ -63,3 +63,8 @@ Every prompt text (instructions and tool descriptions) follows these rules. CI l
 ## Alternatives considered
 
 - **Keep emphasis but shorten it.** Rejected: the guide names emphasis itself as the cause of overtriggering.
+
+## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+
+- Q13: 1,024 chars per tool description, enforced by lint.
+- Q17: the no-regex rule covers runtime code only; `lint.mjs` may use regex.

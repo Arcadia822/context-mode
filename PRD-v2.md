@@ -154,9 +154,9 @@ Removed as tools: `ctx_doctor`, `ctx_upgrade`, `ctx_insight` → CLI only (G4).
 |---|---|---|
 | E1 | Global mode `CONTEXT_MODE_PROJECT=global`, explicit only | #737 users rely on one shared DB |
 | E2 | Journal per agent session (hooks write), server never writes session records | #1214 #1198 #1055 #1156 |
-| E3 | Search default `project`, session content included, ranking + labels | #895 #835 #827 #696 #1014 |
+| E3 | (superseded: default `worktree`, Q6 r2) Search default `project`, session content included, ranking + labels | #895 #835 #827 #696 #1014 |
 | E4 | Tool descriptions ≤ 2K tokens, CI-checked | #1031 (6.2K tokens on Pi) |
-| E5 | Default timeout 120 s, `timeoutMs`, kill tree, cancel via MCP | #959 #936 #947 #953 #1147 #968 #1082 #1182 |
+| E5 | (superseded by DECISIONS-r3 Q8: measured default, not 120 s) Default timeout 120 s, `timeoutMs`, kill tree, cancel via MCP | #959 #936 #947 #953 #1147 #968 #1082 #1182 |
 | E6 | Hook matchers limited; ≤ 20 ms budget | #960 #1261 |
 | E7 | Journal ≤ 5 MB/session; content dies with session DB (14 d); no lifetime stats store | #1156 #1079 #999 #1248 |
 | E8 | HTTP daemon mode removed; no runtime npm install | #1162 #1174 #1280 |
@@ -289,3 +289,8 @@ Each line supersedes the matching earlier PRD text.
 - **Tools (replaces G4 "doctor/upgrade removed"):** 9 tools — ctx_execute, ctx_batch, ctx_index, ctx_search, ctx_resume, ctx_stats, ctx_doctor, ctx_upgrade, ctx_purge. User commands as skills: /ctx-stats, /ctx-doctor, /ctx-upgrade (ADR-0010, TECH-SPEC §3.9).
 - **v1 users:** no data migration; doctor detects v1 leftovers, upgrade removes them (ADR-0011).
 - **Live E2E:** by hand + RC tags only, no nightly; 6 required agents, 3 tier-2, VS Code contract-only (TECH-SPEC §6.9).
+
+## 17. r3 decisions (2026-10-14)
+
+All 19 answers in `docs/v2/review/DECISIONS-r3.md` are accepted and override earlier PRD text: external MCP output is routed (Q1); one 16 KB output cap (Q2); deny with the rewritten command, never allow+updatedInput (Q3); parse errors deny when a user rule could match (Q4); full v1 deny scope (Q5); WAL checkpoint by the last server + on close (Q6); retention = age + live PID + size cap (Q7); measured timeout, tree kill (Q8); background mode kept (Q9); Node minimum by spike (Q10); one project source per host (Q11); one cache-stable carrier on OpenCode/Pi (Q12); description cap in lint (Q13); main branch protection (Q14); keyless harness replaces tier2 smoke (Q15); uninstall as a ctx_upgrade mode (Q16); no-regex = runtime only (Q17); issues send maximum debug data, only secrets stripped (Q18); small calls (Q19).
+New: ADR-0017: an E2E case at every step on Sonnet low; v1 users must not leave (R1–R8).

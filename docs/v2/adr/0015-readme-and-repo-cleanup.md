@@ -63,3 +63,8 @@ Nothing changes on `main` without owner approval.
 ## `web/` (context-mode.com)
 
 Decided 2026-10-14: deleted completely. It is not moved to another repo.
+
+## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+
+- Q15: `tier2-e2e-smoke.yml` is replaced by the keyless harness (ADR-0012), not kept.
+- ADR-0017 R5/R7: the README gets a v1 → v2 feature table and a per-agent rollback command.

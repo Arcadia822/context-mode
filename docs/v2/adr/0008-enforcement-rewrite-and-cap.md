@@ -13,7 +13,8 @@
 | build tools (gradle, mvn, sbt) | `modify` to an `echo` that suggests `… \| tail -30` | **deny**; the alternative is `ctx_execute` with `intent` (no `tail`, nothing cut) |
 | Read of a file > 50 KB | hint | hint |
 | Grep, other Bash | hint, once per session | hint, once per session |
-| user `permissions.deny` | deny | deny |
+| user `permissions.deny` | deny, incl. ctx_execute / ctx_execute_file / ctx_batch_execute input | deny, same scope (Q5) |
+| large output of other MCP servers' tools (`mcp__<other>__*`) | routed (#529) | routed: ADR-0016 case C replace; hints as PRD:103 (Q1) |
 
 No new deny categories are added. The r2 deny of any Bash call whose predicted output is too large is dropped, so Read-before-Edit and ordinary commands behave as they did in v1.
 
@@ -70,3 +71,10 @@ Constructs the parser does not handle (`[[`, `((`, `case`, functions, process su
 
 - **Hook budget (GS6):** bare Node is 45.6 ms p95 on the owner's Mac, so command hooks cannot meet "p95 ≤ 40 ms wall". Proposal: "≤ 20 ms CPU on top of bare Node" for the command-hook agents; Claude Code uses `mcp_tool` and starts no process.
 - LV7 (above), and deny compliance on Opus and Sonnet, run in the live harness (ADR-0012).
+
+## r3 decisions (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+
+- **Q4 parse errors:** deny when a user deny rule could match the command; allow only when the curl/HTTP rule is the only one that applies.
+- **Q5 full v1 scope:** the parser unwraps sudo, env, time, nice, timeout, xargs, command, `bash -c`/`sh -c` strings and `$( )` / backticks before it reads argv0. The #166 silent/verbose curl checks stay (v1 routing.mjs:745-765). User `permissions.deny` also checks ctx tool input.
+- **Q2 threshold:** one global `OUTPUT_CAP = 16384`.
+- **Q19:** same routing on every agent, not the same text; hints in parallel batches are per call.

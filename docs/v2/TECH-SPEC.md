@@ -34,11 +34,13 @@ v2.0.0 is released only when **all** of these hold. Each one is checked by a mac
 | GS1 | GP1–GP11 pass on macOS, Linux and Windows | per-PR CI (§6.6) |
 | GS2 | GP-LIVE-ROUTING passes its thresholds (§6.5) on the 6 required agents (§6.9); tier-2 agents pass or carry a written reason; VS Code passes the contract E2E | RC job |
 | GS3 | G25 is answered: do hooks fire for MCP tools on Copilot CLI, ZCode, Pi and OpenCode 2 (GP-LIVE-HOOKS) | release job |
-| GS4 | v1 `tests/` is deleted; every row of `tickets/v2-test-ledger.md` has a verdict; no file under `e2e/` imports `src/` | CI lint + ledger script |
-| GS5 | The repo has no `SKILL.md`, no removed-agent path (§3.10) and no `AGENTS.md`, `GEMINI.md`, `QWEN.md`, `CLAUDE.md`, `SYSTEM.md` or `copilot-instructions.md`; `lint.mjs` passes on the built `initialize` + `tools/list` | GP2 |
-| GS6 | Hook wall time p95 ≤ 40 ms for every adapter and event (G26) | GP3 bench |
+| GS4 | v1 tests stay: every KEEP-PASS test in `docs/v2/review/TEST-TRIAGE-r2.md` (131) passes on v2; every ledger row has a verdict; no file under `e2e/` imports `src/` | CI lint + ledger script |
+| GS5 | The repo has no SKILL.md other than the 3 command skills and `.claude/skills/release`, no removed-agent path (§3.10) and no `AGENTS.md`, `GEMINI.md`, `QWEN.md`, `CLAUDE.md`, `SYSTEM.md` or `copilot-instructions.md`; `lint.mjs` passes on the built `initialize` + `tools/list` | GP2 |
+| GS6 | Claude Code (mcp_tool hook): p95 ≤ 40 ms wall. Command-hook agents: ≤ 20 ms CPU on top of bare Node (bare Node alone is 45.6 ms p95 on the owner's Mac) | GP3 bench |
 | GS9 | Server passes GP1/GP2 as a 2026-07-28 stateless server (`server/discover`) and as a 2025-06-18 / 2025-11-25 `initialize` server, with identical bytes (ADR-0007) | per-PR CI |
 | GS7 | Install and update from git `#release` with no npm step | GP1 |
+| GS10 | v1 retention gates R1–R8 of ADR-0017 pass, incl. the v1-migration live case set | release |
+| GS11 | Every implementation step has a green E2E case (ADR-0017) | CI + harness report |
 | GS8 | Every item in `tickets/v2-not-closed.md` has an outcome: decided, closed as covered, or closed as won't-fix | review |
 
 ## 2. Scope
@@ -426,3 +428,14 @@ Only Claude Code and Codex were run locally; the other rows come from source and
 | Budget "≤ 1,500 tokens" for instructions | ≤ 2,048 chars | Claude Code's cut is in chars |
 | "8 caps markers" in the routing skill | lint: 16 caps, 2 doubt, 10 tags, 103 quoted | `lint.mjs` with stated regexes |
 | GP-LIVE "20 commands" | §6.5 spec + a measured pilot (§3.6) | — |
+
+## 12. r3 decisions applied (2026-10-14)
+
+Source: `docs/v2/review/DECISIONS-r3.md` (owner accepted all 19). These override older text in this file.
+
+- **Output cap:** one constant, `OUTPUT_CAP = 16384` bytes, for ctx tool replies, the ADR-0016 replace and the ADR-0008 deny threshold. Not the 2 KB `ctx_resume` cap, not the 4 KB doctor cap (Q2).
+- **ctx_execute:** one fixed default timeout, value set by measurement (not 120 s, v1 #406); kills the process tree (Windows Job Object) and bounds the whole handler incl. batch; grep exit 1 is not an error (Q8). `background` mode stays; languages: shell, powershell, javascript, typescript, python, plus runtimes found on PATH (Q9). Code echo removed, `summary` added; `ctx_search` rejects an unknown `query` field with `isError` (Q19).
+- **Node minimum:** first version with `node:sqlite` + `timeout` and no flag, from spike S-NODE (Q10).
+- **Fetch:** honours `HTTP(S)_PROXY`/`NO_PROXY`, with an SSRF check on the target host (Q19).
+- **Tool descriptions:** 1,024 chars each, enforced by `lint.mjs` (Q13). "No regex" applies to runtime code only; CI tools may use regex (Q17).
+- **Tests:** ADR-0003 r2 + ADR-0017: v1 tests stay; an E2E case at every step; live E2E on `claude-sonnet-5 --effort low`.
