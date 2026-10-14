@@ -1,6 +1,6 @@
 # v2 prompt drafts: server instructions, 9 tool descriptions, 3 user skills
 
-Status: DRAFT r2, 2026-10-14. These texts become `src/prompt/instructions.md` and `src/prompt/tools/<tool>.md`, which the build inlines into the bundle. Rules: TECH-SPEC §3.4 and ADR-0005. Lengths and lint results: TECH-SPEC §3.5 (they come from a script, not from this file).
+Status: DRAFT r3, 2026-10-15. These texts become `src/prompt/instructions.md` and `src/prompt/tools/<tool>.md`, which the build inlines into the bundle. Rules: TECH-SPEC §3.4 and ADR-0005. Lengths and lint results: TECH-SPEC §3.5 (they come from a script, not from this file).
 
 The parameter names follow PRD §7. The `ctx_search` default scope follows README §8 and is still an open question (Q6 in the chat round).
 
@@ -41,7 +41,7 @@ Searches content stored with ctx_index and earlier sandbox output in this projec
 
 <!-- id: ctx_resume -->
 ```text
-Returns a summary of up to 2 KB for this session: the last task and user request, files changed, open errors, decisions, and search terms for ctx_search. Use it after the conversation was compacted or resumed, before you repeat earlier work.
+Returns a summary of up to 2 KB for this session: the last task and user request, files changed, open errors, decisions, and search terms for ctx_search. Set `seq` to a specific checkpoint number to resume from that point instead of the latest one — pointers returned by ctx_search go here, as `ctx_resume(seq: N)`, not back into ctx_search. Use it after the conversation was compacted or resumed, before you repeat earlier work.
 ```
 
 <!-- id: ctx_stats -->
@@ -93,4 +93,8 @@ Call the ctx_upgrade tool and show its table to the user. Then call ctx_doctor a
 ```text
 Deletes stored data: one session, one indexed source, or everything stored for this project. This cannot be undone. Use it only when the user asks to forget or reset data.
 ```
+
+## Changes
+
+r3: added the `seq` param to `ctx_resume` (PRD §7, decision A35), bumped status to r3.
 
