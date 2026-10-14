@@ -97,4 +97,5 @@ Deletes stored data: one session, one indexed source, or everything stored for t
 ## Changes
 
 r3: added the `seq` param to `ctx_resume` (PRD §7, decision A35), bumped status to r3.
+r4 fix pass: checked decisions A35 and B71 — `seq` is already in the `ctx_resume` text above, and B71 found no doc fix needed here (it is a process note about round-1's own notes field). No text changed.
 
