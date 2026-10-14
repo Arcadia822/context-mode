@@ -44,7 +44,7 @@ check_d1..d10: <enum>
 digest: <sha256>
 ```
 ### What happened
-<free text, no paths, no env values, no command output — see DO-NOT-SEND.md>
+<free text; paths, logs and command output are wanted — strip only secrets, see DO-NOT-SEND.md>
 
 ### Expected
 <free text>
@@ -72,13 +72,15 @@ them, because only it is guaranteed to redact first.
 - A value that fails the scanner becomes the literal `<invalid>`. It is
   dropped whole — never truncated, never partially shown.
 - Paths, env values, config values, file bodies, raw error messages and
-  command lines cannot appear in the `ctx-report` block, by construction, not
-  by filtering.
+  command lines cannot appear in the `ctx-report` block itself, by
+  construction, not by filtering — only typed facts about them do (for
+  example `has_space` for a path).
 - Error codes are members of the closed enum in `src/errors.ts`; an unknown
   code is also `<invalid>`.
 - Free-text sections (`What happened`, `Expected`, `Steps`) are not covered
-  by the typed scanner. The agent itself must not place a path, token, env
-  value, or raw command line there — see `DO-NOT-SEND.md`.
+  by the typed scanner, and per Q18 they are where real paths, logs, and
+  command lines belong. The agent must still strip secrets there — see
+  `DO-NOT-SEND.md`.
 
 ## The digest
 
@@ -90,4 +92,8 @@ them, because only it is guaranteed to redact first.
 
 ## Sources
 
-- ADR-0014 §2–3: `docs/v2/adr/0014-issue-forms-and-debug-report.md`
+- ADR-0014 §2–3 and the r3 Q18 decision: `docs/v2/adr/0014-issue-forms-and-debug-report.md`
+
+## Changes
+
+r4 fix pass: fixed the "What happened" hint and the redaction notes to match Q18 (paths/logs/command output allowed, only secrets stripped).
