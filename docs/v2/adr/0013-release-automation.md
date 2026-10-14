@@ -1,4 +1,4 @@
-# ADR-0013: Maximum release automation: two owner acts per release
+# ADR-0013: Maximum release automation: one `/release` command
 
 - Status: Accepted r2 (2026-10-14). Owner: releases are frequent; no SSH signing; one local skill does the release; workflows may go to `main`.
 - Evidence: workflow `wf_8bf44d89-dc5`, topic `release-automation`: 16 findings verified, 5 unverified, 1 refuted. Raw output: `tickets/round5-evidence.json`.
