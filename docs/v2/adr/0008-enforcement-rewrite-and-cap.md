@@ -1,80 +1,126 @@
-# ADR-0008: Enforcement = rewrite the input + cap the output; deny only on user policy
+# ADR-0008: Hard deny, decided by a parse tree and measured sizes
 
-- Status: Proposed (2026-10-14). Replaces D10 ("no hard denies, hints only"). Live checks LV1–LV5 must pass before it is Accepted.
-- Evidence: workflow `wf_98d74014-ea1`, topic `enforcement`, with every finding re-checked by a skeptic agent. Raw output: `tickets/round3-evidence.json`.
+- Status: Proposed r2 (2026-10-14). It replaces r1 ("rewrite + cap"). The owner rejected r1: "sert deny gerekli; truncate ve regex yasak; algoritmik yaklaş".
+- Evidence: workflow `wf_5b7e35b3-72f`, topic `algorithmic-deny`, with every finding re-checked by a skeptic agent. Raw output: `tickets/round4-evidence.json`. Prototype: `/tmp/wf4/proto/sh.mjs`.
 
-## Problem
+## Rules from the owner
 
-The owner's concern: a hint alone does not stop the agent. It runs Bash, Read or WebFetch anyway, the large output enters the context, and nothing is saved. v1 issues show this (#1003, #1026, #1212, #1052, #1069, #347).
+1. A hard deny is required. A hint alone is ignored.
+2. No regex and no truncation decide anything or shorten anything.
+3. A deny is never a dead end: it names one exact call that works.
 
-A hard deny of the tool is not the answer either: it causes dead ends. v1 issues *caused* by denies or redirects: #1269, #1221, #1134, #1125, #1106, #1099, #1055, #1037, #1006, #1003, #984, #979, #938, #908, #843, #832, #817, #794, #792, #625, #230, #173, #166, #79 (24 titles).
+## Why v1 failed
 
-What v1 denies today, on the Claude Code path:
-- WebFetch: always.
-- curl/wget to stdout, inline HTTP, gradle/mvn/sbt: the hook returns `modify` with an `echo`, and the Claude Code formatter turns that into a deny.
+- v1 decides Bash with about 63 regexes over a quote-stripped string (`hooks/core/routing.mjs:260-324`). It does not parse the shell.
+- Result: false denies on quoted text, grep patterns and heredocs (#1221), and a whole compound command aborted (#1269). Other deny-caused issues: #1125, #1106, #817, and 19 more (ADR-0011 has the full list).
 
-## What each agent can do (source/docs, verified)
+## Decision
 
-| Agent | Deny + reason | Rewrite input | Replace output |
-|---|---|---|---|
-| Claude Code | yes | yes: `updatedInput` + `allow` | **yes**: `updatedToolOutput`, all tools; must match the tool's output shape, else ignored |
-| Codex CLI | yes | yes: only with `allow` | as error: `decision:block`; or non-error text: `continue:false` + reason |
-| Gemini CLI | yes | yes | as error: block; or `tailToolCallRequest`, which runs a second tool whose result replaces the first |
-| Qwen Code | yes | yes (not for policy-owned calls) | as error: `continue:false` + `stopReason` |
-| Copilot CLI | yes | yes: `modifiedArgs` | **yes**: `modifiedResult.textResultForLlm` |
-| VS Code Copilot | yes | yes | no: can only append context |
-| Kiro | yes (docs) | no evidence | no |
-| ZCode | yes | yes | no (docs) |
-| Pi | yes | yes | **yes**: `tool_result` |
-| OpenCode 2 | yes | yes | **yes**: `tool.execute.after` result |
+**Deny when the predicted output size of a call is over one budget (16,384 B), and only then.** The prediction comes from a parse tree plus measured history, never from text patterns.
 
-Sources: Claude Code docs `hooks.md` (updatedInput, updatedToolOutput; "The value must match the tool's output shape"); `codex_parser.rs:162-169, 435, 450`; Gemini `coreToolHookTriggers.ts:110-243`; Qwen `coreToolScheduler.ts:5622, 6471-6497`; Copilot hooks docs (modifiedArgs, modifiedResult); VS Code `chatHookService.ts:77-91`, `toolCalling.tsx:671-674`.
+### 1. Where the decision runs
 
-## Decision: "never deny the user's intent, always cap the bytes"
+There is one module `decide.mjs`, and one transport per agent:
 
-**1. Rewrite (primary).** PreToolUse returns `allow` + new input for commands that flood output:
-- curl/wget to stdout
-- build and test tools
-- large find/grep/cat
-- commands with no bound on output
+| Agent | Transport | Cost |
+|---|---|---|
+| Claude Code | PreToolUse hook `{type:"mcp_tool", server:"context-mode", tool:"ctx_route"}`. The hook calls a tool on the MCP server that is already running, so **no Node process starts**. If the server is not connected, the tool runs; this is the defined behaviour, not a fallback | 1.26 ms in the server, [V] live on 2.1.283 |
+| Pi, OpenCode 2 | in-process: the extension imports `decide.mjs` | in-process |
+| Codex, Gemini, Qwen, Copilot CLI, VS Code, Kiro, ZCode | command hook: one bundled file, `node --compile-cache`, read-only `SELECT` | about 16 ms CPU on top of Node startup |
 
-The command becomes `node <bundle>/run.mjs -- <original>`. The original is passed base64 in an env var, not through string escaping (lesson from PR #926). The wrapper does three things:
-- runs the real command and keeps its exit code,
-- stores the full output in `context.db` (FTS),
-- prints a capped head and tail, a source id and one line: "search the rest with ctx_search".
+### 2. Parser
 
-The command still runs, so there is no dead end. The wrapper does not need the MCP server to be running (#1053, #1055, #347).
+Own code, about 12 KB, no dependency, no regex:
+- character state machine for the lexer
+- recursive descent for the grammar: list, pipeline, simple command, subshell, group, if, while, until, for, redirects, heredoc
+- `$( )` and backticks parsed recursively, up to depth 8
 
-Works on: Claude Code, Codex, Gemini, Qwen, Copilot CLI, VS Code, ZCode, Pi, OpenCode 2. **Not Kiro.**
+Measured alternatives:
+- tree-sitter-bash: 83 ms per spawn
+- mvdan/sh wasm: 109 ms per spawn
+- Both are too slow. The tree-sitter native build would also bring back the ABI problem.
 
-**2. Cap after the run (safety net).** When a built-in tool's output is over a threshold (default 16 KB, one constant), the PostToolUse hook does three things: indexes the full output, replaces what the model sees with a head/tail + source id, and points to `ctx_search`. How each agent replaces the output:
-- Real replacement: Claude Code (in the exact tool shape), Copilot CLI, Pi, OpenCode 2.
-- Replacement as a reason or error: Codex, Gemini, Qwen.
+Constructs the parser does not handle (`[[`, `((`, `case`, functions, process substitution) raise `ParseError(code)`.
 
-This saves context only, because the tool has already run. It also fixes the WebFetch artifact bugs (#938, #984, #1006).
+**Parse error → allow + journal the error code.** This is the single, documented path, not a fallback. GP3 golden cases list every error code.
 
-**3. Agents with no output replacement (VS Code, ZCode, Kiro).** Use rewrite (1) where possible. Add one `additionalContext` line on each such call, not once per session. Kiro: hints only. This gap is accepted and documented (ADR-0001 rule 4).
+### 3. Size estimate
 
-**4. Real denies** come only from the user's own `permissions.deny` / policy file.
+Typed tables, data rather than patterns:
+- `WRAP`: timeout, time, nice, env, sudo, `command` (except `-v`), xargs …
+- `PRODUCER[argv0]`: class (net, file, walk, search, build, vcs, tiny, unknown) and a prior size
+- `SINK`: head/tail `-n N` gives N × mean line length; `wc`, `grep -c/-l/-q` give 64 B; redirect to a file gives 0
+- Redirects are fd-aware: `2>/dev/null` is not counted as stdout.
 
-**5. Stats** count only bytes that the rewrite or cap path really removed (GP10).
+Signature of a call:
 
-One path per agent: the adapter table names exactly which mechanism (1 or 2) each agent uses. There is no runtime choice between them (ADR-0001).
+```
+sig = argv0 + subcommand + sorted flag names + argument kinds (+ first path for the walk class)
+```
 
-## Live checks before Accepted (in GP-LIVE)
+PostToolUse records the real output bytes per `sig` in `sig_stats`: a 32-bucket log2 histogram, plus line and byte sums.
 
-| ID | Check |
+Prediction:
+
+```
+pred = (k·prior + n·p90) / (k + n),   k = 3
+```
+
+- **Read:** the exact `stat` size of the file.
+- **Network, first use (n = 0):** allow and record (fixes #817). A deny comes only after that host's p90 is measured over the budget.
+- Hosts that are never denied (the claude.ai artifact hosts, #938 #984 #1006) are named entries in a table, not a pattern.
+
+### 4. Decision per tool
+
+| Tool | Rule |
 |---|---|
-| LV1 | Claude Code: does `allow` + `updatedInput` rewrite a Bash command today? A v1 comment (`hooks/core/formatters.mjs:23-28`) says no, but it was based on a deny-only probe |
-| LV2 | Claude Code: the exact `updatedToolOutput` shapes for Read, Grep and WebFetch. A wrong shape is silently ignored |
-| LV3 | Codex and Qwen: does `continue:false` end the whole turn, or only replace the output? |
-| LV4 | Gemini: does `tailToolCallRequest` work with an MCP tool name? |
-| LV5 | Do Claude Code auto mode and Codex auto-review accept the rewritten command (#1134, #967)? |
+| Bash | `pred > budget` → DENY once per (session, command hash). **The identical command sent again → ALLOW**, so there is never a dead end |
+| Read | with no offset/limit and `stat > budget` → DENY once per path. The same Read again → ALLOW (read-before-edit still works). Read with offset/limit → ALLOW |
+| Grep (content mode) | prediction over budget → DENY; the alternative is the same Grep with `output_mode:"count"`, or `ctx_execute rg` with an intent |
+| Glob | ALLOW |
+| WebFetch | ALLOW, except when the host's measured p90 is over the budget |
+| Subagent whose tool list has no ctx tool | ALLOW + journal |
+| User `permissions.deny` | always DENY |
 
-If LV1 fails, Claude Code uses mechanism 2 (cap) only, decided once in the adapter table.
+### 5. Deny message: built from the input, the original text kept as-is
 
-## Consequences
+```
+context-mode: predicted ~{b} B ({source}: n={n}, p90={p90}), budget 16384.
+Run the same command here; the full output is indexed and only the part that matches your intent returns.
+Tool: {exact tool name for this agent}
+{"language":"shell","code":<original command>,"intent":<the description field, or "state what you need">}
+If you must run it with Bash anyway, send the identical command again.
+```
 
-- Savings no longer depend on the model obeying a hint.
-- There are no dead ends, because the user's command always runs.
-- New code: one wrapper `run.mjs`, plus one cap function shared by all adapters. GP3 golden cases cover each agent's output shape.
+The exact tool name comes from the adapter table (TECH-SPEC §3.8), so ToolSearch `select:` loads the deferred tool in one step.
+
+**[V] live on Haiku:** the deny reason reached the model as an `is_error` tool result, and the model used the exact alternative it named.
+
+### 6. Debug journal
+
+One row per decision:
+
+```
+agent, transport, tool, sig, AST node types, parse result + ms, pred, n, p90, decision, repeat, decide ms
+```
+
+The issue debug report includes these rows (ADR-0014).
+
+## Golden cases (GP3, besides the v1 issue cases)
+
+| Input | Expected |
+|---|---|
+| `find / -name x \| grep -v foo 2>/dev/null` | deny |
+| `command -v curl` | allow |
+| `f(){ ls; }; f` | ParseError(func) → allow |
+| a `while read` loop over a 1 MB file | deny |
+| first `curl -s https://ifconfig.me` | allow + record |
+| curl to a host with p90 = 40 KB | deny |
+| a 300 KB Read | deny; the identical Read again → allow |
+| a Grep predicted at 50 KB | deny with `output_mode:count` |
+
+## Open
+
+- **Hook budget (GS6): blocks release.** Node startup alone is 45.6 ms p95 wall and 33 ms CPU on the owner's Mac, so **no command hook can meet "p95 ≤ 40 ms wall"**. Proposal: Claude Code uses `mcp_tool` (no process start); on the other agents the budget is "CPU added on top of bare Node ≤ 20 ms".
+- Deny compliance was seen only on Haiku (2 runs). Opus and Sonnet go into the harness (ADR-0012).
+- Built-in subagent types (Explore, Plan): do they have the MCP tools?
