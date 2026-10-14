@@ -1,131 +1,72 @@
-# ADR-0008: Hard deny, decided by a parse tree and measured sizes
+# ADR-0008: Enforcement = v1's rule set, with the mechanisms that caused its issues replaced
 
-- Status: Proposed r2 (2026-10-14). It replaces r1 ("rewrite + cap"). The owner rejected r1: "sert deny gerekli; truncate ve regex yasak; algoritmik yaklaş".
-- Evidence: workflow `wf_5b7e35b3-72f`, topic `algorithmic-deny`, with every finding re-checked by a skeptic agent. Raw output: `tickets/round4-evidence.json`. Prototype: `/tmp/wf4/proto/sh.mjs`.
+- Status: Proposed r3 (2026-10-14). Owner: "v1'deki gibi olsun ama issue'lar da fixlensin." This replaces r2's generic size-prediction deny on every Bash call.
+- Sources: v1 `hooks/core/routing.mjs` @ `5869f4fa` (lines 670–900); issue titles from `tickets/data/isall.json`; round-4 evidence `tickets/round4-evidence.json` (parser timing, `mcp_tool` hook, live deny on Haiku).
 
-## Rules from the owner
+## Same scope as v1
 
-1. A hard deny is required. A hint alone is ignored.
-2. No regex and no truncation decide anything or shorten anything.
-3. A deny is never a dead end: it names one exact call that works.
-
-## Why v1 failed
-
-- v1 decides Bash with about 63 regexes over a quote-stripped string (`hooks/core/routing.mjs:260-324`). It does not parse the shell.
-- Result: false denies on quoted text, grep patterns and heredocs (#1221), and a whole compound command aborted (#1269). Other deny-caused issues: #1125, #1106, #817, and 19 more (ADR-0011 has the full list).
-
-## Decision
-
-**Deny when the predicted output size of a call is over one budget (16,384 B), and only then.** The prediction comes from a parse tree plus measured history, never from text patterns.
-
-### 1. Where the decision runs
-
-There is one module `decide.mjs`, and one transport per agent:
-
-| Agent | Transport | Cost |
+| Tool / case | v1 | v2 |
 |---|---|---|
-| Claude Code | PreToolUse hook `{type:"mcp_tool", server:"context-mode", tool:"ctx_route"}`. The hook calls a tool on the MCP server that is already running, so **no Node process starts**. If the server is not connected, the tool runs; this is the defined behaviour, not a fallback | 1.26 ms in the server, [V] live on 2.1.283 |
-| Pi, OpenCode 2 | in-process: the extension imports `decide.mjs` | in-process |
-| Codex, Gemini, Qwen, Copilot CLI, VS Code, Kiro, ZCode | command hook: one bundled file, `node --compile-cache`, read-only `SELECT` | about 16 ms CPU on top of Node startup |
+| WebFetch | deny → `ctx_fetch_and_index` + `ctx_search` | **deny**, same alternative |
+| curl/wget whose body goes to stdout | `modify` to an `echo` (works as a deny) | **deny** |
+| inline HTTP in a shell command (`fetch(`, `requests.get(` …) | `modify` to an `echo` | **deny** |
+| build tools (gradle, mvn, sbt) | `modify` to an `echo` that suggests `… \| tail -30` | **deny**; the alternative is `ctx_execute` with `intent` (no `tail`, nothing cut) |
+| Read of a file > 50 KB | hint | hint |
+| Grep, other Bash | hint, once per session | hint, once per session |
+| user `permissions.deny` | deny | deny |
 
-### 2. Parser
+No new deny categories are added. The r2 deny of any Bash call whose predicted output is too large is dropped, so Read-before-Edit and ordinary commands behave as they did in v1.
 
-Own code, about 12 KB, no dependency, no regex:
-- character state machine for the lexer
-- recursive descent for the grammar: list, pipeline, simple command, subshell, group, if, while, until, for, redirects, heredoc
-- `$( )` and backticks parsed recursively, up to depth 8
+## What changes, and which issues each change fixes
 
-Measured alternatives:
-- tree-sitter-bash: 83 ms per spawn
-- mvdan/sh wasm: 109 ms per spawn
-- Both are too slow. The tree-sitter native build would also bring back the ABI problem.
+| # | v1 mechanism | v2 mechanism | Fixes |
+|---|---|---|---|
+| 1 | Regexes over a quote-stripped string | Own shell parser: lexer state machine + recursive descent, no regex, about 12 KB, 1.26 ms in the server. The decision looks at each simple command's argv0 and parsed flags | #1221 (curl inside quotes, grep patterns, heredocs), #1106 (regex matched argument words) |
+| 2 | Any curl/wget in a compound command → the whole command replaced | Decide per pipeline. Allow when the body does not reach the tool output: written to a file (`-o file`, `-O`, `>`), or the pipeline ends in a bounded sink (`head -c N`, `wc`, `grep -c`, `jq` with a scalar …). Deny only when the body reaches stdout | #1269, #1125, #166, #792, #817 |
+| 3 | `modify` to an `echo` command | A real deny with a reason (each agent's native field, ADR-0001 adapter table) | #1134 (Codex auto-review flagged the echo as instruction drift) |
+| 4 | `isMCPReady()`: a machine-global PID marker file | Claude Code: the PreToolUse hook is `type:"mcp_tool"`, so it runs only while this session's server is connected; otherwise the tool runs. Pi, OpenCode 2: in-process, availability is known. Other agents: the server writes a `ready` row (agent, worktree, pid, heartbeat every 30 s) in `context.db`; the hook denies only if a row for the same agent and worktree is younger than 60 s | #1055, #1053, #347, #173, #230. Live check LV7: two concurrent sessions of a command-hook agent in one worktree |
+| 5 | Subagents denied although they cannot call ctx tools | Read the subagent's tool list (`agent_type` → the agent file's `tools:`). No ctx tool → allow and journal | #794, #1037 |
+| 6 | WebFetch denied for every URL | A host table that is never denied (the claude.ai artifact hosts). A user policy file with an `allowHosts` list | #1006, #984, #938, #908, #843 |
+| 7 | Deny/hint state "once per process"; parallel batches slip through | Stateless per call for denies, so every call in a parallel batch is checked. Hints "once per session" are keyed by `session_id` in `context.db` | #1003, #1267 |
+| 8 | Routing text injected into subagent prompts | No injection; routing lives in the tool descriptions (ADR-0004) | #967, #832 |
+| 9 | Build-tool alternative cut the output with `tail -30` | `ctx_execute` with `intent`: full output indexed, the matching part returned | (owner rule: no truncation) |
 
-Constructs the parser does not handle (`[[`, `((`, `case`, functions, process substitution) raise `ParseError(code)`.
+## Deny message
 
-**Parse error → allow + journal the error code.** This is the single, documented path, not a fallback. GP3 golden cases list every error code.
-
-### 3. Size estimate
-
-Typed tables, data rather than patterns:
-- `WRAP`: timeout, time, nice, env, sudo, `command` (except `-v`), xargs …
-- `PRODUCER[argv0]`: class (net, file, walk, search, build, vcs, tiny, unknown) and a prior size
-- `SINK`: head/tail `-n N` gives N × mean line length; `wc`, `grep -c/-l/-q` give 64 B; redirect to a file gives 0
-- Redirects are fd-aware: `2>/dev/null` is not counted as stdout.
-
-Signature of a call:
+Built from the input; the original text is kept as-is:
 
 ```
-sig = argv0 + subcommand + sorted flag names + argument kinds (+ first path for the walk class)
-```
-
-PostToolUse records the real output bytes per `sig` in `sig_stats`: a 32-bucket log2 histogram, plus line and byte sums.
-
-Prediction:
-
-```
-pred = (k·prior + n·p90) / (k + n),   k = 3
-```
-
-- **Read:** the exact `stat` size of the file.
-- **Network, first use (n = 0):** allow and record (fixes #817). A deny comes only after that host's p90 is measured over the budget.
-- Hosts that are never denied (the claude.ai artifact hosts, #938 #984 #1006) are named entries in a table, not a pattern.
-
-### 4. Decision per tool
-
-| Tool | Rule |
-|---|---|
-| Bash | `pred > budget` and a ctx tool is reachable → DENY, **every time** (no repeat pass: a repeat would just flood the context). The alternative is the same command in `ctx_execute`, which runs it in the same directory and shell, so it always works. Class `interactive` (needs a TTY: editors, `git rebase -i`, …) → ALLOW |
-| Read | with no offset/limit and `stat > budget` → DENY every time. Alternatives: Read with `offset/limit` (the model picks the range; we cut nothing), or `ctx_execute` with `intent`. Read with offset/limit → ALLOW. Live check LV6: does a partial Read satisfy Claude Code's read-before-edit rule? |
-| Grep (content mode) | prediction over budget → DENY; the alternative is the same Grep with `output_mode:"count"`, or `ctx_execute rg` with an intent |
-| Glob | ALLOW |
-| WebFetch | ALLOW, except when the host's measured p90 is over the budget |
-| Subagent whose tool list has no ctx tool | ALLOW + journal |
-| User `permissions.deny` | always DENY |
-
-### 5. Deny message: built from the input, the original text kept as-is
-
-```
-context-mode: predicted ~{b} B ({source}: n={n}, p90={p90}), budget 16384.
-Run the same command here; the full output is indexed and only the part that matches your intent returns.
-Tool: {exact tool name for this agent}
+context-mode: <what> sends its body into the conversation.
+Run it here instead; the full output is indexed and only the part that matches your intent comes back.
+Tool: <exact tool name for this agent>
 {"language":"shell","code":<original command>,"intent":<the description field, or "state what you need">}
 ```
 
-The exact tool name comes from the adapter table (TECH-SPEC §3.8), so ToolSearch `select:` loads the deferred tool in one step.
+- The exact tool name comes from the adapter table (TECH-SPEC §3.8), so `ToolSearch select:` loads the deferred tool in one step.
+- For WebFetch the message names `ctx_fetch_and_index` with the URL, then `ctx_search`.
+- **[V] live on Haiku:** the deny reached the model as an `is_error` tool result, and the model used the exact alternative.
 
-**[V] live on Haiku:** the deny reason reached the model as an `is_error` tool result, and the model used the exact alternative it named.
+## Parse errors
 
-### 6. Debug journal
+Constructs the parser does not handle (`[[`, `((`, `case`, functions, process substitution) raise `ParseError(code)`. Result: allow and journal the code, as one documented path. GP3 lists every code.
 
-One row per decision:
+## Golden cases (GP3)
 
-```
-agent, transport, tool, sig, AST node types, parse result + ms, pred, n, p90, decision, repeat, decide ms
-```
-
-The issue debug report includes these rows (ADR-0014).
-
-### 4b. No dead end, by construction
-
-A deny happens only when the alternative can run in this session: on Claude Code the `mcp_tool` hook runs only while the server is connected; a subagent whose tool list has no ctx tool is never denied; interactive commands are never denied. A wrong (too high) prediction costs one turn: `ctx_execute` returns small output whole, and the real size goes into `sig_stats`, so the next prediction is right.
-
-## Golden cases (GP3, besides the v1 issue cases)
-
-| Input | Expected |
-|---|---|
-| `find / -name x \| grep -v foo 2>/dev/null` | deny |
-| `command -v curl` | allow |
-| `f(){ ls; }; f` | ParseError(func) → allow |
-| a `while read` loop over a 1 MB file | deny |
-| first `curl -s https://ifconfig.me` | allow + record |
-| the same large `find` sent twice | deny both times |
-| `git rebase -i HEAD~3` | allow (interactive) |
-| curl to a host with p90 = 40 KB | deny |
-| a 300 KB Read | deny, also on the identical retry; Read with offset/limit → allow |
-| a Grep predicted at 50 KB | deny with `output_mode:count` |
+| Input | Expected | Issue |
+|---|---|---|
+| `curl -s https://x.io/a.json` | deny | — |
+| `curl -sL -o out.bin https://x.io/f` | allow | #166 |
+| `curl -s https://x.io \| head -c 200` | allow | #1125 |
+| `git log --grep="curl"` | allow | #1221 |
+| `cat <<EOF … curl … EOF` (curl only in the heredoc body) | allow | #1221 |
+| `npm ci && curl -s https://x.io/a.json && npm test` | deny; the alternative runs the whole command in `ctx_execute` | #1269 |
+| `./gradlew build` | deny; the alternative has no `tail` | — |
+| WebFetch of a claude.ai artifact URL | allow | #1006 |
+| WebFetch from a subagent without ctx tools | allow | #794 |
+| Claude Code with the server not connected | the tool runs | #173 |
+| Read of a 300 KB file | hint, not deny | — |
 
 ## Open
 
-- **Hook budget (GS6): blocks release.** Node startup alone is 45.6 ms p95 wall and 33 ms CPU on the owner's Mac, so **no command hook can meet "p95 ≤ 40 ms wall"**. Proposal: Claude Code uses `mcp_tool` (no process start); on the other agents the budget is "CPU added on top of bare Node ≤ 20 ms".
-- Deny compliance was seen only on Haiku (2 runs). Opus and Sonnet go into the harness (ADR-0012).
-- Built-in subagent types (Explore, Plan): do they have the MCP tools?
+- **Hook budget (GS6):** bare Node is 45.6 ms p95 on the owner's Mac, so command hooks cannot meet "p95 ≤ 40 ms wall". Proposal: "≤ 20 ms CPU on top of bare Node" for the command-hook agents; Claude Code uses `mcp_tool` and starts no process.
+- LV7 (above), and deny compliance on Opus and Sonnet, run in the live harness (ADR-0012).
