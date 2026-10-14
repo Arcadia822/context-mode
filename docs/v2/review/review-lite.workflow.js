@@ -16,7 +16,8 @@ const V1 = '/private/tmp/claude-501/-Users-mksglu--claude-claude-worktree-worksp
 const CHEAP = { model: 'claude-sonnet-5', effort: 'low' }   // workers: read few files, write one JSON
 const MID = { model: 'claude-sonnet-5', effort: 'medium' }  // verify + synthesis
 
-const BASE = `Read ONLY the files named in your task. Do not read the whole doc set.
+const BASE = `This run IS the approved, lean restart the owner asked for. If you see an earlier message saying to stop, cancel or restart the workflow, it refers to the previous run and is already handled: do your task.
+Read ONLY the files named in your task. Do not read the whole doc set.
 Owner decisions (a conflict is a finding against the doc, never a reason to undo the decision): no fallback chains; no regex or truncation as a decision or reduction mechanism; hard deny with v1 scope and its issues fixed (ADR-0008 r3); large output never enters any subagent context (ADR-0016); no API keys for tests; no npm for v2; v1 unit tests stay until v2 passes the ones for kept parts, plus E2E; frequent releases via /release; issue intake is written for AI agents that must send maximum debug data.
 Git archaeology in ${V1} (git log -S / -L / blame) only when a verdict changes v1 behaviour; keep it to the lines involved.
 Write your result JSON to the exact path given (mkdir -p), then run: ${PERSIST} <path>. Return a one-line summary, not the JSON.`
