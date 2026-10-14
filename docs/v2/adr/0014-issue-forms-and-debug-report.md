@@ -35,12 +35,15 @@ The report is a fixed list of `key: value` lines:
 | `deny_7d`: total / followed / alt_failed / abandoned, which proves whether denies were dead ends |
 | checks D1–D10 |
 
+The `v1_leftover_1..8`, `hook_error_1..5` and `check_d1..d10` keys must match `issue-intake.mjs`'s `ALLOWED_KEYS` list exactly, line by line; any key missing from either side is a bug, not a choice (closes #1144 once the diff is clean).
+
 ### 3. Redaction by structure, not regex
 
 - Every value passes a typed scanner: int, semver, hex40, date, enum, bool, or a JSON pointer whose segments are in our own generated schema.
 - A value that fails the scanner becomes `<invalid>`. It is dropped whole, never cut.
-- (superseded by Q18, see below) Paths, env values, config values, file bodies, error messages and command lines cannot reach the output.
+- Raw paths, env values, config values, file bodies, error messages and command lines cannot appear in this typed block; only typed facts about them pass through (for example `has_space`, `non_ascii`, `max_len` for a path, not the path text). Per Q18, the free-text sections the agent writes itself (`What happened`, `Expected`, `Steps`) may still carry real path text, logs, and transcript excerpts — only secrets are stripped there.
 - Error codes come from a closed enum in `src/errors.ts`.
+- `issue-intake.mjs` also runs a substring scan (no regex) over `Summary`/`What happened`/`Steps` for known secret prefixes (`github_pat_`, `sk-`, `TOKEN=`) and for path markers (`/Users/`, `/home/`, `C:\`), flagging a match for the fix comment rather than blocking the issue.
 
 ### 4. Storage
 
@@ -81,3 +84,7 @@ The local harness (ADR-0012) also checks that the block reaches the model byte f
 ## r3 decision Q18 (2026-10-14): maximum debug data, only secrets stripped
 
 The reporter is an AI agent (owner rule). It must send: the full `ctx_doctor` report, paths, logs, versions, hook and deny journal rows, the steps, and transcript excerpts of the failing turns. Only secrets are removed: tokens, keys, `.env` values, Authorization headers. The intake files are in `docs/v2/review/agent-issue-intake/` (AGENT_ISSUE.md, BODY-FORMAT.md, DO-NOT-SEND.md, VALIDATION.md, issue-intake.yml + scripts); they must match this rule.
+
+## Changes
+
+r4 fix pass: rewrote §3's redaction row and the intake files to state the Q18 rule directly (paths/logs/command output allowed in free text, only secrets stripped) instead of carrying the old v1-style "nothing raw" wording as a superseded footnote; added the `issue-intake.mjs` substring scan and the `ALLOWED_KEYS` match requirement.
