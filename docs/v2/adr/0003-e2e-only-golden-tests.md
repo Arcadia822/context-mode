@@ -47,8 +47,15 @@ Most v2 requirements (B rows in the issue map) are contract breaks at a process 
 - **In-process snapshot tests.** Rejected: they do not cross a process boundary.
 - **E2E-live on every PR.** Rejected: it is non-deterministic and costly. Q8.
 
+## Changes
+
+- r4: named the actual B-row-to-GP coverage count (13/125) and made it an exit-gate condition (B51, B73); stated that vitest and `node:test` coexist as two runners for two layers (B52); scoped the no-npm rule to the release tree only, since CI/dev tooling needs its own `package.json` to run vitest (B74).
+
 ## r2 (2026-10-14, owner): supersedes the deletion decision above
 
 - v1 unit tests are **not** deleted at the start. `docs/v2/review/TEST-TRIAGE-r2.md` classifies the 209 files: 131 KEEP-PASS, 52 PORT, 26 RETIRED.
 - v2 is built until every KEEP-PASS test passes (after a mechanical import-path port where needed). PORT tests are rewritten; RETIRED tests are removed with their ADR named.
 - E2E-style GP1–GP11 and the live harness are added on top (ADR-0017). The "no file under e2e/ imports src/" rule stays for the E2E layer only.
+- **Two runners coexist**, not one: the 131 KEEP-PASS files run on vitest+TS (`TEST-TRIAGE-r2.md`); GP1–GP11 e2e cases run on `node:test` against built artifacts. TECH-SPEC Q9 must say this, not "test runner = node:test" alone.
+- **No-npm scope:** the "no npm for v2" rule (ADR-0002, ADR-0013) covers the shipped release tree only. CI/dev tooling keeps its own `package.json` and lockfile outside that tree, and that is where vitest runs the 131 KEEP-PASS tests. The release tree itself ships with no `package.json` and no vitest.
+- **v2.0 exit gate, B-row coverage:** a direct count against the current docs (`tickets/v2-issue-map.md`, TECH-SPEC §GP1–GP11, checked 2026-10-15) found 13 of 125 B-row issue numbers covered by a GP case, not the 53-of-124 figure earlier QA passes carried forward. The exit gate for v2.0 is: every row of `tickets/v2-issue-map.md` gets a `GPn` column (or TECH-SPEC gets a reverse table naming the GP case per B row), and the gate blocks on 100% B-row coverage, not only on GP1–GP11 passing.
