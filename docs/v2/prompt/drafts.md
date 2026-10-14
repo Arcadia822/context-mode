@@ -1,4 +1,4 @@
-# v2 prompt drafts: server instructions + 7 tool descriptions
+# v2 prompt drafts: server instructions, 9 tool descriptions, 3 user skills
 
 Status: DRAFT r2, 2026-10-14. These texts become `src/prompt/instructions.md` and `src/prompt/tools/<tool>.md`, which the build inlines into the bundle. Rules: TECH-SPEC §3.4 and ADR-0005. Lengths and lint results: TECH-SPEC §3.5 (they come from a script, not from this file).
 
@@ -49,12 +49,48 @@ Returns a summary of up to 2 KB for this session: the last task and user request
 Reports how many bytes context-mode kept out of the conversation in this session and in this project, per agent, as a Markdown table. Show the table to the user as it is. Use it when the user asks what context-mode saved.
 ```
 
+<!-- id: ctx_doctor -->
+```text
+Checks this context-mode install and reports a table with one row per check: version, Node and node:sqlite, host config and hooks for this agent, MCP connection, project and worktree, database health, index contents, and hook timing. Each failed row names its cause and the fix in one line. It changes nothing. Use it when the user asks whether context-mode works, or after a context-mode error.
+```
+
+<!-- id: ctx_upgrade -->
+```text
+Updates context-mode to the latest release for this agent and rewrites only context-mode's own entries in the host config. User entries and user settings such as hook timeouts are kept, and v1 entries are removed. Returns a table of what changed and whether a restart is needed. Use it only when the user asks to update context-mode.
+```
+
+<!-- id: skill_ctx-stats -->
+```text
+---
+name: ctx-stats
+description: Show how much context context-mode saved, as a table.
+disable-model-invocation: true
+---
+Call the ctx_stats tool and show its table to the user unchanged. Add one sentence under the table that names the largest saving.
+```
+
+<!-- id: skill_ctx-doctor -->
+```text
+---
+name: ctx-doctor
+description: Check that context-mode is installed and working, as a table.
+disable-model-invocation: true
+---
+Call the ctx_doctor tool and show its table to the user unchanged. If a row failed, list the fixes it names, in order.
+```
+
+<!-- id: skill_ctx-upgrade -->
+```text
+---
+name: ctx-upgrade
+description: Update context-mode to the latest release.
+disable-model-invocation: true
+---
+Call the ctx_upgrade tool and show its table to the user. Then call ctx_doctor and show its table. If a restart is needed, say so in one sentence.
+```
+
 <!-- id: ctx_purge -->
 ```text
 Deletes stored data: one session, one indexed source, or everything stored for this project. This cannot be undone. Use it only when the user asks to forget or reset data.
 ```
 
-<!-- id: prompt_ctx-stats -->
-```text
-Call the ctx_stats tool and show its table to the user unchanged. Add one sentence below the table that names the largest saving.
-```

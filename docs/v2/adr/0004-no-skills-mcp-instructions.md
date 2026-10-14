@@ -1,4 +1,4 @@
-# ADR-0004: No SKILL.md and no per-agent instruction files; prompts ship as MCP server instructions + tool descriptions
+# ADR-0004: No routing skills and no per-agent instruction files; prompts ship as MCP server instructions + tool descriptions
 
 - Status: Proposed (2026-10-14). The user asked on 2026-10-14 for no skill file per adapter. Open details: Q2, Q7, Q10 and Q11 in TECH-SPEC §10.
 - Related: TECH-SPEC §3 · ADR-0005 · ADR-0006
@@ -41,8 +41,9 @@ Which agents pass `instructions` to the model is in TECH-SPEC §3.1. Summary:
 2. **Two channels, split by job, with no duplication:**
    - **Server `instructions`:** what the server is for, when to search for and use its tools, and when not to.
    - **Tool descriptions:** what each tool does and how to call it. Each one is self-contained, because it is the only channel on agents that ignore `instructions`.
-3. **Deleted:**
-   - all 11 `SKILL.md` files
+3. **Exception (2026-10-14):** three user-command skills stay, `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade`. They hold no routing text; each only calls its tool (TECH-SPEC §3.9). One `skills/` source dir.
+4. **Deleted:**
+   - the routing skill and the other v1 `SKILL.md` files (11), replaced by the 3 command skills
    - all 13 routing files
    - the `skills` keys in every manifest and in `package.json`
    - every adapter code path that writes `AGENTS.md`, `QWEN.md`, `GEMINI.md`, `CLAUDE.md` or `copilot-instructions.md`

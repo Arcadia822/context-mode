@@ -31,7 +31,7 @@ v2.0.0 is released only when **all** of these hold. Each one is checked by a mac
 
 | ID | Criterion | Check |
 |---|---|---|
-| GS1 | GP1–GP10 pass on macOS, Linux and Windows | per-PR CI (§6.6) |
+| GS1 | GP1–GP11 pass on macOS, Linux and Windows | per-PR CI (§6.6) |
 | GS2 | GP-LIVE-ROUTING passes its thresholds (§6.5) for Claude Code on Opus, Sonnet and Haiku, and on each agent whose CLI can run headless in CI | release job |
 | GS3 | G25 is answered: do hooks fire for MCP tools on Copilot CLI, ZCode, Pi and OpenCode 2 (GP-LIVE-HOOKS) | release job |
 | GS4 | v1 `tests/` is deleted; every row of `tickets/v2-test-ledger.md` has a verdict; no file under `e2e/` imports `src/` | CI lint + ledger script |
@@ -197,11 +197,38 @@ Rules:
 2. **Hooks**: each adapter row in `adapters/table.ts` holds the exact name pattern for that agent (one row per agent, one install mode per agent, PRD E14). Generated matchers are tested in GP3 against names taken from recorded native payloads, never against hand-written strings (#1222).
 3. The server key is fixed: `context-mode` everywhere.
 
-### 3.9 `ctx-stats` command [D]
+### 3.9 User commands as skills: `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade` [D 2026-10-14]
 
-- Server declares the `prompts` capability with one prompt: `ctx-stats` (text: `docs/v2/prompt/drafts.md` id `prompt_ctx-stats`). It tells the model to call `ctx_stats` and show the table unchanged.
-- `ctx_stats` returns a Markdown table (columns: scope, agent, calls, bytes produced, bytes returned, bytes kept out). Golden in GP10.
-- Where it shows up: Claude Code `/context-mode:ctx-stats (MCP)` or `/mcp__context-mode__ctx-stats` [V docs]; Gemini CLI as a slash command [V `packages/cli/src/services/McpPromptLoader.ts`]; Qwen Code and OpenCode 2 call `prompts/list` in their MCP client [V], UI exposure [U]; Codex: no `list_prompts` in `codex-rs/core` or `codex-rs/tui` [V code search, 0 hits]; Pi: none. On agents without prompts the user asks in plain words and the model calls `ctx_stats`.
+- No MCP prompts. Each command is one `SKILL.md` with `disable-model-invocation: true` that only calls the matching tool and shows its table (texts: `docs/v2/prompt/drafts.md` ids `skill_ctx-*`).
+- One source dir `skills/` (3 files). Manifests point at it; no per-agent copies, no routing text in skills (routing stays in instructions + tool descriptions, ADR-0004).
+- [V] Claude Code 2.1.283, plugin loaded with `--plugin-dir`, plugin name `context-mode`: both `/ctx-stats` and `/context-mode:ctx-stats` ran the skill (live probe 2026-10-14, haiku-4-5). Docs: plugin skills are namespaced `/plugin-name:skill-name`; the short name works when no other command uses it.
+- Skill loaders exist in source for Gemini CLI (`core/src/skills/skillLoader.ts`), Qwen (`core/src/tools/skill.ts`), OpenCode (`core/src/skill.ts`), Pi (`core/skills.ts`), Codex (`codex-rs/core`, 36 files mention SKILL.md), VS Code Copilot (`tools/node/skillTool.ts`). Whether each one exposes a skill as a `/` command, and from which install path: **[U] S-SKILLS**. Agents without user-invocable skills: the user asks in words, the model calls the tool.
+- `ctx_stats`, `ctx_doctor`, `ctx_upgrade` return Markdown tables (golden in GP10, GP11).
+
+### 3.11 `ctx_doctor` and `ctx_upgrade` (kept, rebuilt for v2) [D 2026-10-14]
+
+v1 issue titles mentioning doctor: 35 (8 open); upgrade/heal: 70 (18 open). Main classes: false FAIL / wrong report (#1152 Codex hooks, #1014 PASS on empty index, #548 path with space, #712 Gemini path), baked paths and versions (#711, #1005, #523, #1090), two install trees (#901), user settings reverted (#1226), npm/Bun/ABI (#514, #543).
+
+**`ctx_doctor`** (read-only, one row per check, each FAIL row = cause + one-line fix):
+| Check | Source of truth |
+|---|---|
+| version: running bundle vs latest `#release` tag | bundle constant; `git ls-remote` (no network → "unknown", not FAIL) |
+| Node ≥ minimum, `node:sqlite` loads | process |
+| host config for **this** agent: MCP entry + 4 hook entries match `adapters/table.ts` exactly, no v1 entries, no duplicate | the generated config, compared as data, not by path string |
+| hook round-trip: run the hook entry with a recorded payload, check output + wall time ≤ 40 ms | GP3 fixture shipped in the bundle |
+| MCP: this process is the one the host started (clientInfo = agent) | `initialize` |
+| project + worktree resolved from the agent's one source | adapter table |
+| `context.db`: `integrity_check`, FTS5 integrity, schema version | DB |
+| index: sources and chunk counts per scope (fixes #1014: empty index is reported, not PASS) | DB |
+Never spawns per tick, never writes, never installs.
+
+**`ctx_upgrade`** (one path per install mode, no fallback):
+1. Read the install mode from the adapter table (marketplace plugin, git checkout, in-process plugin).
+2. Fetch the latest `#release` tag into a new version dir; verify the bundle hash.
+3. Regenerate only context-mode's entries in the host config from `adapters/table.ts`; keep user keys and user-set values (hook timeouts, #1226); delete v1 entries; paths resolved at hook run time, never baked (#711, #1005).
+4. Switch atomically (rename), keep the previous dir for one rollback; never touch user instruction files.
+5. Return a table of changes + "restart needed"; the `/ctx-upgrade` skill then runs `ctx_doctor`.
+Marketplace installs: the host's own update command is the path; `ctx_upgrade` reports it and only fixes config entries.
 
 ### 3.10 Removed-agent files [D]
 
@@ -261,6 +288,7 @@ Hard rule: no test imports `src/`. Inputs and outputs are processes, stdio, file
 | GP7 | Scope | 2 worktrees × 2 sessions × 2 agents | identity shared per repo; search default per Q6; session ranks first; path containment by components | #744 #1185 #895 #1294 #1302 |
 | GP8 | Concurrency | 4 servers + hooks writing one `context.db` | 0 busy errors reach the tool result; `integrity_check` ok; no retry loop; idle CPU ≈ 0 | #985 #1213 #1248 · verify-single-db |
 | GP9 | Lifecycle | stdin EOF, parent kill, on 3 OS | exit < 2 s; no spawn at boot; no `chdir` | #1100 #982 #953 #1167 #923 #924 #974 |
+| GP11 | Doctor + upgrade | v1 install, broken config, empty index, user-set hook timeout | doctor table golden; upgrade keeps user values, removes v1 entries, no baked paths, rollback works | #1152 #1014 #901 #1226 #711 #1005 #548 |
 | GP10 | Stats | a known sequence of tool calls | saved = sandbox bytes − returned bytes; idempotent per call id; per agent "no data" with the reason | #1151 #1252 #1036 #1287 |
 | GP-LIVE-ROUTING | real agent + model | §6.5 | over-routing and under-routing within thresholds; answers correct | ADR-0005, ADR-0006 |
 | GP-LIVE-HOOKS | real agent + model | an MCP tool call | hook fired yes/no per agent | G25 |
@@ -339,6 +367,7 @@ Hard rule: no test imports `src/`. Inputs and outputs are processes, stdio, file
 | S-COPILOT | Does Copilot CLI pass `instructions` to the model? Test with a live probe like §3.1 | §3.7 |
 | S-ZCODE | Same probe on ZCode | §3.7, Q10 |
 | S-NAMES | Exact MCP tool names on Copilot CLI, Kiro, ZCode; live check of the Gemini `mcp_` finding | §3.8, GP3 |
+| S-SKILLS | Which agents expose a plugin/extension skill as a `/` command, and from which install path | §3.9 |
 | S-CODEX | Codex: are MCP tools deferred, and when does the namespace description become visible? | Q11 |
 | G25 | Do hooks fire for MCP tools on Copilot CLI, ZCode, Pi and OpenCode 2? | GS3 |
 
@@ -348,7 +377,8 @@ Hard rule: no test imports `src/`. Inputs and outputs are processes, stdio, file
 |---|---|---|
 | Q1 | Delete v1 tests in one commit once GS1 holds and the ledger is complete | **[D]** |
 | Q2 | `ctx_execute` alwaysLoad on Claude Code (ADR-0006) | **[D]** |
-| Q3 | **`ctx-stats` stays as a user command**: MCP prompt `ctx-stats` that calls the `ctx_stats` tool, which returns a Markdown table (§3.9). No other commands | **[D]** |
+| Q3 | **User commands = 3 skills** `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade` (§3.9); no MCP prompts | **[D]** |
+| Q3b | **`ctx_doctor` and `ctx_upgrade` stay as tools, rebuilt for v2** (§3.11) | **[D]** |
 | Q4 | **`.claude/skills/context-mode-ops` is removed from the repo** | **[D]** |
 | Q4b | **Every file of a removed agent is removed from the repo** (§3.10) | **[D]** |
 | Q5 | Budgets: instructions ≤ 2,048 chars; each description ≤ 1,024; descriptions + schemas ≤ 8,000 | **[D]** |
