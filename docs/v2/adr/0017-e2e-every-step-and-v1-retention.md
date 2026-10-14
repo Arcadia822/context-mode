@@ -33,9 +33,13 @@ Goal: on release day a v1 user keeps a working setup at every moment, gets a cle
 | R5 | No v1 feature disappears without a replacement or a note | the README "Upgrading from v1" section has a table v1 feature → v2 (statusline, ctx_insight, ctx_purge scopes, the CLI). Each removed feature names why and what replaces it |
 | R6 | Data: no migration, but no surprise | `ctx_doctor` shows where the v1 data is and its size; nothing is deleted without a prompt (ADR-0011) |
 | R7 | Rollback works | the README gives the exact command to go back to v1 per agent; GP-live rehearses it once per release |
-| R8 | The switch is rehearsed | the migration E2E (`v1-migration` case set): a temp HOME with a real v1 install per agent → v2 install → `/ctx-upgrade` → doctor clean → a routing case passes. Runs in the full live set before every release |
+| R8 | The switch is rehearsed | the migration E2E (`v1-migration` case set): a temp HOME with a real v1 install per agent → v2 install → `/ctx-upgrade` → doctor clean → a routing case passes. Runs in the full live set before every release. Named case: install v2 → `/ctx-upgrade` → `npm uninstall -g` → Copilot CLI and VS Code hooks keep working (closes the R3 gap where they call the global bin) |
 
 ## Consequences
 
 - The harness grows a `covers` tag per case and a step mode.
 - One v1 patch release is needed for R2. It changes only the doctor/stats text; it needs the owner's approval like any outward step.
+
+## Changes
+
+r4 fix pass: added the named R8 case for the install → upgrade → uninstall → hooks-still-work sequence.
