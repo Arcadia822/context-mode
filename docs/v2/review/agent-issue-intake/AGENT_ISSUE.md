@@ -23,7 +23,16 @@ This file is for an AI coding agent, not a person. A person asks their agent to
    paste the body into a comment or a PR; pull requests are not accepted.
 5. If `ctx_doctor` itself fails or is missing, say so under "What happened"
    and still send the degraded-start report it is required to return (ADR-0014
-   §1) — never substitute hand-written text for the report block.
+   §1) — never substitute hand-written text for the report block. The report's
+   keys are the fixed list in `BODY-FORMAT.md` (`version`, `commit`,
+   `latest_release`, `agent`, `install_mode`, `os`, `node`, `node_sqlite`,
+   `fts5`, `mcp_protocol`, `enforcement_mode`, `config_diff_count`,
+   `v1_leftover_count`, `v1_leftover_1..8`, `project_source`, `has_space`,
+   `non_ascii`, `max_len`, `db_integrity`, `live_busy_probe`, `index_count`,
+   `hook_rt_median_ms`, `hook_rt_max_ms`, `hook_error_1..5`, `hook_error_rest`,
+   `deny_7d_total`, `deny_7d_followed`, `deny_7d_alt_failed`,
+   `deny_7d_abandoned`, `check_d1..d10`, `digest`) — this must match
+   `issue-intake.mjs`'s `ALLOWED_KEYS` exactly.
 
 ## 3. Required headings, in this order
 
@@ -55,3 +64,7 @@ See `BODY-FORMAT.md` in this folder for what goes under each heading.
 - ADR-0014: Issues only, with a typed `ctx_doctor` debug report; no pull requests — `docs/v2/adr/0014-issue-forms-and-debug-report.md`
 - ADR-0016: Large output must not enter a subagent's context either — `docs/v2/adr/0016-subagent-context-protection.md`
 - Review evidence: `tickets/round4-evidence.json`
+
+## Changes
+
+r4 fix pass: step 5 now spells out the exact key list, to match `issue-intake.mjs`'s `ALLOWED_KEYS`.
