@@ -23,7 +23,7 @@
 | VS Code | default branch, 2026-10-14 | GitHub API |
 | Claude Code | 2.1.283 | live probes; docs `code.claude.com/docs/en/mcp.md` fetched 2026-10-14 |
 | Prompting guide | "Prompting best practices", platform.claude.com, fetched 2026-10-14 | — |
-| MCP schema | `2025-11-25`, `2026-07-28` | modelcontextprotocol/modelcontextprotocol `schema/*/schema.ts` |
+| MCP spec | **2026-07-28** (latest; server target, ADR-0007), clients today send `initialize` at 2025-06-18 (Codex) / 2025-11-25 (Claude Code) | modelcontextprotocol/modelcontextprotocol `schema/*/schema.ts` |
 
 ## 1. Golden state: exit criteria
 
@@ -37,6 +37,7 @@ v2.0.0 is released only when **all** of these hold. Each one is checked by a mac
 | GS4 | v1 `tests/` is deleted; every row of `tickets/v2-test-ledger.md` has a verdict; no file under `e2e/` imports `src/` | CI lint + ledger script |
 | GS5 | The repo has no `SKILL.md`, no removed-agent path (§3.10) and no `AGENTS.md`, `GEMINI.md`, `QWEN.md`, `CLAUDE.md`, `SYSTEM.md` or `copilot-instructions.md`; `lint.mjs` passes on the built `initialize` + `tools/list` | GP2 |
 | GS6 | Hook wall time p95 ≤ 40 ms for every adapter and event (G26) | GP3 bench |
+| GS9 | Server passes GP1/GP2 as a 2026-07-28 stateless server (`server/discover`) and as a 2025-06-18 / 2025-11-25 `initialize` server, with identical bytes (ADR-0007) | per-PR CI |
 | GS7 | Install and update from git `#release` with no npm step | GP1 |
 | GS8 | Every item in `tickets/v2-not-closed.md` has an outcome: decided, closed as covered, or closed as won't-fix | review |
 
