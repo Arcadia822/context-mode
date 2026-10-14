@@ -81,7 +81,7 @@ The full per-item list (with Given/When/Then) is in `tickets/v2-issue-map.md`. E
 - **Read:** search and stats open sibling DBs with `readOnly: true` (#1213).
 - **Cleanup:** only at server start, never on a timer. Delete a session DB/journal older than 14 days whose owner PID is dead. Liveness = `process.kill(pid, 0)`, never `ps` (#1024 #1140 #1277 #970 #1262).
 - **Content retention:** a source re-indexes when its content hash changes; it dies with its session DB (#1079).
-- **Corruption:** hard error in the tool result with the exact `context-mode doctor --fix` command; `--fix` deletes only that session DB (#867). No silent recreate.
+- **Corruption:** hard error in the tool result naming `ctx_doctor`'s fix action: rename `context.db`/`-wal`/`-shm` aside. No silent recreate, no separate CLI (#867).
 - **v1 data:** never read, never migrated. `doctor` lists v1 paths + sizes and prints a delete command (D13).
 
 ## 5. Project and session identity
@@ -110,7 +110,7 @@ The full per-item list (with Given/When/Then) is in `tickets/v2-issue-map.md`. E
 
 ## 7. Tools (surface = G4)
 
-Proposed set of 7: `ctx_execute`, `ctx_batch`, `ctx_index`, `ctx_search`, `ctx_resume`, `ctx_stats`, `ctx_purge`.
+Proposed set of 9: `ctx_execute`, `ctx_batch`, `ctx_index`, `ctx_search`, `ctx_resume`, `ctx_stats`, `ctx_doctor`, `ctx_upgrade`, `ctx_purge`.
 
 Common contract for all tools:
 - First line of every result = a one-line summary. No code echo (#1067 #1047 #1127 #1077).
@@ -125,11 +125,14 @@ Per tool:
 - **ctx_batch** `{commands[], queries[]}` — renamed from `ctx_batch_execute`; queries search the whole session scope (#696); one footer, short (#922 #1275).
 - **ctx_index** `{path | content | url, source?}` — absorbs `ctx_fetch_and_index`. Honors `HTTP(S)_PROXY`/`NO_PROXY` (#1039 #1041). Nested `.gitignore` + negations (#1292), `**` = zero or more dirs (#1291). Byte + chunk budgets, high-entropy tokens skipped (#961 #878 #962 #898 #980). turndown bundled, no runtime install (#1280 #1174).
 - **ctx_search** `{queries[], scope?: "session"|"project", source?, offset?}` — default `project`, includes this session's own content (#835 #991); rank session > worktree > project; each hit labelled agent/session/worktree (#895); zero hits → states scope + doc counts (#1014); `source`+`offset` pages an indexed source (replaces the `ctx_page` request #1204); clip before highlight (#963). No call throttle: the per-call byte budget is the guard (#769 #920).
-- **ctx_resume** `{session?}` — ≤ 2 KB summary from the journal: last task, last user request, files changed, open errors, decisions, pointers for `ctx_search`. Plugin agents know the session in-process; hook agents get the id in the SessionStart hint (D9, #1022 #902 #1274 #780).
+- **ctx_resume** `{session?, seq?: number}` — ≤ 2 KB summary from the journal: last task, last user request, files changed, open errors, decisions, pointers go to `ctx_resume(seq:N)`. Plugin agents know the session in-process; hook agents get the id in the SessionStart hint (D9, #1022 #902 #1274 #780).
 - **ctx_stats** — see §9.
 - **ctx_purge** `{session | source | project}` — absorbs `ctx_forget` (#939).
 
-Removed as tools: `ctx_doctor`, `ctx_upgrade`, `ctx_insight` → CLI only (G4).
+- **ctx_doctor** — diagnoses and fixes install/DB problems; see §4 corruption handling.
+- **ctx_upgrade** — moves a v1 install to v2, removing v1 leftovers (ADR-0011).
+
+Removed as a tool: `ctx_insight` → CLI only (TECH-SPEC §3.11/G4).
 
 ## 8. Sandbox
 
@@ -170,7 +173,7 @@ Removed as tools: `ctx_doctor`, `ctx_upgrade`, `ctx_insight` → CLI only (G4).
 | E16 | `doctor --report` with secret redaction replaces `ctx-debug.sh` | #1242 #1141 |
 | E17 | No search throttle; per-call byte budget instead | #769 #920 |
 | E18 | Fetch honors standard proxy env vars | #1039 #1041 |
-| E19 | Corruption = hard error + `doctor --fix` (one session DB) | #867 |
+| E19 | Corruption = hard error naming `ctx_doctor`'s fix action (rename DB files aside) | #867 |
 | E20 | PRs never commit bundles or generated files; CI rejects them | #995 #991 #1091 #980 #888 |
 | E21 | ADRs are maintainer-only; contributor ADR files are not merged | P0 map (docs/adr/0013–0017) |
 | E22 | Code echo removed; first line = summary; no echo env knob | #1067 #1047 #1127 |
@@ -212,7 +215,7 @@ Bun + bun:sqlite · better-sqlite3 · ensure-deps · heal scripts · `start.mjs`
 
 - **M0 Spikes:** S0 project source per agent · S1 plugin distribution ref.
 - **M1 Core:** store, sandbox, lifecycle, tools + their contract tests.
-- **M2 Reference adapters:** hook runtime, journal, policy, CC + Codex.
+- **M2 Reference adapters:** hook runtime, journal, policy, CC + Codex. Owner checkpoint before M3 starts: confirm the hook runtime contract, the journal schema, and the policy decision shape.
 - **M3 Other hooks+mcp adapters:** Gemini, Cursor, Kiro, Qwen, Kimi, Copilot CLI, VS Code, JetBrains, agy, Zed.
 - **M4 Plugin adapters:** OpenCode, Pi, OMP, OpenClaw.
 - **M5 CLI + stats:** install, doctor, upgrade, uninstall, `ctx_stats`.
@@ -294,3 +297,7 @@ Each line supersedes the matching earlier PRD text.
 
 All 19 answers in `docs/v2/review/DECISIONS-r3.md` are accepted and override earlier PRD text: external MCP output is routed (Q1); one 16 KB output cap (Q2); deny with the rewritten command, never allow+updatedInput (Q3); parse errors deny when a user rule could match (Q4); full v1 deny scope (Q5); WAL checkpoint by the last server + on close (Q6); retention = age + live PID + size cap (Q7); measured timeout, tree kill (Q8); background mode kept (Q9); Node minimum by spike (Q10); one project source per host (Q11); one cache-stable carrier on OpenCode/Pi (Q12); description cap in lint (Q13); main branch protection (Q14); keyless harness replaces tier2 smoke (Q15); uninstall as a ctx_upgrade mode (Q16); no-regex = runtime only (Q17); issues send maximum debug data, only secrets stripped (Q18); small calls (Q19).
 New: ADR-0017: an E2E case at every step on Sonnet low; v1 users must not leave (R1–R8).
+
+## 18. Changes (2026-10-15, r4 fixes)
+
+§4/E19 corruption text now names `ctx_doctor`'s fix action instead of a deleted `--fix` CLI flag; `ctx_resume` takes `seq?` and its own pointers now resume by seq, not `ctx_search`; added an owner checkpoint at end of M2; §7 tool count fixed to 9, with `ctx_doctor`/`ctx_upgrade` listed as tools and only `ctx_insight` named as CLI-only, matching the r3 Q3b override.
