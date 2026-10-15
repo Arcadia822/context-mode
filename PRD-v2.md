@@ -159,7 +159,7 @@ Removed as a tool: `ctx_insight` → CLI only (TECH-SPEC §3.11/G4).
 | E2 | Journal per agent session (hooks write), server never writes session records | #1214 #1198 #1055 #1156 |
 | E3 | (superseded: default `worktree`, Q6 r2) Search default `project`, session content included, ranking + labels | #895 #835 #827 #696 #1014 |
 | E4 | Tool descriptions ≤ 2K tokens, CI-checked | #1031 (6.2K tokens on Pi) |
-| E5 | (superseded by DECISIONS-r3 Q8: measured default, not 120 s) Default timeout 120 s, `timeoutMs`, kill tree, cancel via MCP | #959 #936 #947 #953 #1147 #968 #1082 #1182 |
+| E5 | Default and max timeout 600,000 ms (S-TIMEOUT), `timeoutMs`, longer work via `background`, kill tree (process group / Job Object), cancel via MCP | #959 #936 #947 #953 #1147 #968 #1082 #1182 |
 | E6 | Hook matchers limited; ≤ 20 ms budget | #960 #1261 |
 | E7 | Journal ≤ 5 MB/session; content dies with session DB (14 d); no lifetime stats store | #1156 #1079 #999 #1248 |
 | E8 | HTTP daemon mode removed; no runtime npm install | #1162 #1174 #1280 |

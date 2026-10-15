@@ -163,7 +163,7 @@ Setup:
 | A2 | v2 draft | **yes** | **0/6** | **0/6** | 6/6 | 2,808 | $1.14 |
 | B | v1 `SKILL.md` lines 20–40 (1,090 chars) | no | **2/6** (S1, both runs) | 0/6 | 6/6 | 3,777 | $0.97 |
 
-Classification: the first tool call that is not `ToolSearch`. Correct answers: L1 667 ERROR lines; L2 tests 0, 997, 1994 and 2991 failed; L3 1,539 users.
+Classification: the first tool call that is not `ToolSearch`. Correct answers: L1 667 ERROR lines; L2 5 tests failed (0, 997, 1994, 2991, 3988; the r2 pilot text missed 3988); L3 1,539 inactive / 18,461 active users (ADR-0006 re-probe, `tickets/spikes-r5/ADR-0006-reprobe.md`).
 
 Findings:
 1. With tool search on, the v2 instructions alone did not make Opus use the deferred ctx tools on large tasks (A). Loading `ctx_execute` up front fixed this in this sample (A2). → ADR-0006.
@@ -374,7 +374,7 @@ These are narrower than a GP case — one function or one invariant each — but
 
 ### 6.6 CI matrix
 
-- **[P] Per PR:** macOS, Linux, Windows × the minimum Node version and the current Node version. The minimum is S-NODE (§9).
+- **[P] Per PR:** macOS, Linux, Windows × Node 24.15.0 (the minimum, S-NODE) and the current Node (26.x). The minimum is S-NODE (§9).
 - **[P] Budget:** ≤ 10 minutes wall-clock per OS.
 - **E2E-live:** no schedule. See §6.9.
 
@@ -425,7 +425,8 @@ No API key for any test (owner rule). This supersedes the earlier CI-job-with-se
 
 | Spike | Question | Blocks |
 |---|---|---|
-| S-NODE | Minimum Node version with `node:sqlite` + `timeout` and without a flag — not yet checked (`verify-single-db.md`: "Not checked: Node 22"). Until S-NODE reports a number, install hard-fails with a one-line reason ("Node ≥ <checked-minimum> required, found <version>") on any platform with no qualifying Node — no fallback, no silent downgrade (owner rule) | ADR-0002, §6.6 |
+| S-NODE | **Done 2026-10-15** (`tickets/spikes-r5/S-NODE.md`). Minimum **Node 24.15.0**: the lowest version that passed all four checks (node:sqlite with no flag, `timeout` sleeps on SQLITE_BUSY with < 2 ms CPU in a 2-process test, FTS5 compiled in, no ExperimentalWarning). 22.14.0 and 23.11.0 lack FTS5; 22.22.2 has FTS5 but prints the warning; 22.12.0 has no node:sqlite. Not tested: 24.0–24.14, 25.x. Install hard-fails with "Node ≥ 24.15.0 required, found <version>"; no fallback | ADR-0002, §6.6 |
+| S-TIMEOUT | **Done 2026-10-15** (`tickets/spikes-r5/S-TIMEOUT.md`). ctx_execute default = max = 600,000 ms; process tree killed by process group (Unix, `kill(-pid)`, SIGTERM then SIGKILL) and Job Object (Windows, `TerminateJobObject`) | §12, GP4 |
 | S-COPILOT | Does Copilot CLI pass `instructions` to the model? Test with a live probe like §3.1 | §3.7 |
 | S-ZCODE | Same probe on ZCode | §3.7, Q10 |
 | S-NAMES | Exact MCP tool names on Copilot CLI, Kiro, ZCode; live check of the Gemini `mcp_` finding | §3.8, GP3 |
@@ -468,8 +469,8 @@ No API key for any test (owner rule). This supersedes the earlier CI-job-with-se
 Source: `docs/v2/review/DECISIONS-r3.md` (owner accepted all 19). These override older text in this file.
 
 - **Output cap:** one constant, `OUTPUT_CAP = 16384` bytes, for ctx tool replies, the ADR-0016 replace and the ADR-0008 deny threshold. Not the 2 KB `ctx_resume` cap, not the 4 KB doctor cap (Q2).
-- **ctx_execute:** one fixed default timeout, value set by measurement (not 120 s, v1 #406); kills the process tree (Windows Job Object) and bounds the whole handler incl. batch; grep exit 1 is not an error (Q8). `background` mode stays; languages: shell, powershell, javascript, typescript, python, plus runtimes found on PATH (Q9). Code echo removed, `summary` added; `ctx_search` rejects an unknown `query` field with `isError` (Q19).
-- **Node minimum:** first version with `node:sqlite` + `timeout` and no flag, from spike S-NODE (Q10).
+- **ctx_execute:** default timeout **600,000 ms**, max 600,000 ms (S-TIMEOUT, `tickets/spikes-r5/S-TIMEOUT.md`); longer work uses `background: true`. 120 s was rejected: v1 eea5877b (#406) removed a fixed 30 s/60 s default because it killed Gradle/Maven/SBT builds, and 600 s equals Claude Code's own Bash max (`BASH_MAX_TIMEOUT_MS`). Measured on the v1 repo: cold install + typecheck + build + full test suite ≈ 86 s, the suite alone 55.5 s; kills the process tree (Windows Job Object) and bounds the whole handler incl. batch; grep exit 1 is not an error (Q8). `background` mode stays; languages: shell, powershell, javascript, typescript, python, plus runtimes found on PATH (Q9). Code echo removed, `summary` added; `ctx_search` rejects an unknown `query` field with `isError` (Q19).
+- **Node minimum:** 24.15.0 (S-NODE, measured 2026-10-15).
 - **Fetch:** honours `HTTP(S)_PROXY`/`NO_PROXY`, with an SSRF check on the target host (Q19).
 - **Tool descriptions:** 1,024 chars each, enforced by `lint.mjs` (Q13). "No regex" applies to runtime code only; CI tools may use regex (Q17).
 - **Tests:** ADR-0003 r2 + ADR-0017: v1 tests stay; an E2E case at every step; live E2E on `claude-sonnet-5 --effort low`.
@@ -477,3 +478,5 @@ Source: `docs/v2/review/DECISIONS-r3.md` (owner accepted all 19). These override
 ## 13. Changes (r4 fix pass)
 
 §6.9 rewritten from a CI-job-with-keys design to ADR-0012's keyless harness (no API key anywhere); GP1–GP11 rows and the doctor table gained the fix-r4 assertions (owners.techspec in `docs/v2/review/out/fix-r4/plan.json`); Q11 demoted to pending S-CODEX; S-NODE's hard-fail path stated; new §1a (table ownership) and §6.2a (contract/unit assertions) added.
+
+r5 spikes (2026-10-15): S-NODE (Node 24.15.0), S-TIMEOUT (600 s), ADR-0006 re-probe results; §3.6 L2/L3 ground truth corrected.

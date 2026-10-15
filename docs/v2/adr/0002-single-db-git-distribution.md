@@ -41,7 +41,7 @@
 ## Consequences
 
 - No cross-DB scans: stats read one file.
-- Node versions that lack a stable `node:sqlite` with `timeout` are not supported. Which Node version is the minimum was **not** checked; `verify-single-db.md` says "Not checked: Node 22". This is spike S-NODE in TECH-SPEC §9.
+- Node versions that lack a stable `node:sqlite` with `timeout` are not supported. The minimum is **Node 24.15.0** (spike S-NODE, `tickets/spikes-r5/S-NODE.md`): the lowest version measured with node:sqlite unflagged, a sleeping busy `timeout`, FTS5 and no warning.
 
 ## Alternatives considered
 
@@ -52,7 +52,7 @@
 
 - Q6: every server attempts a best-effort WAL checkpoint on its own close (v1 939c5ca8: `closeDB()` runs `wal_checkpoint(TRUNCATE)` unconditionally in a try/catch); there is no election between servers over who checkpoints. GP8 covers the 4-writer case under this rule, and GP8/GP9 must run on real, non-skipped Windows CI — the parent-death lifecycle guard in v1 was Linux/Bun-only (#982, #1100, #1101).
 - Q7: retention = age + live owner PID + a size cap. The size cap number is still open (Q7b): no v1 commit introduces a total-index size cap, only a per-chunk `MAX_CHUNK_BYTES=4096` limit, so that number cannot be reused as a total-index cap without the owner setting it explicitly.
-- Q10: minimum Node set by spike S-NODE.
+- Q10: minimum Node 24.15.0 (S-NODE, 2026-10-15).
 
 ## Changes
 

@@ -1,6 +1,6 @@
 # ADR-0006: Claude Code tool loading: instructions carry routing; `ctx_execute` loads up front
 
-- Status: Proposed (2026-10-14), Q2 in TECH-SPEC §10
+- Status: Accepted (2026-10-15), after the re-probe below. Q2 in TECH-SPEC §10
 - Related: ADR-0004 · TECH-SPEC §3.1 and §3.6
 
 ## Context
@@ -39,3 +39,16 @@ Live probe, 2026-10-14, Claude Code 2.1.283, model `claude-haiku-4-5-20251001`. 
 ## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
 
 - Q19: re-probe alwaysLoad on Opus and Sonnet in the keyless harness before Accepted. Confirmed (fix-r4, B68): this re-probe must run before release sign-off; this ADR carries no v1-behavior risk forward, so no other doc change is needed here.
+
+## Re-probe 2026-10-15 (Opus 5.5 and Sonnet 5, effort low)
+
+24 real sessions, keyless (`tickets/spikes-r5/ADR-0006-reprobe.md`). Over-routing = small task whose first tool is ctx; under-routing = large task whose first tool is native.
+
+| Model | alwaysLoad | Over-routing | Under-routing | Correct answers |
+|---|---|---|---|---|
+| Opus 5.5 | off | 0/3 | 3/3 | 6/6 |
+| Opus 5.5 | on | 0/3 | **1/3** | 6/6 |
+| Sonnet 5 | off | 0/3 | 3/3 | 6/6 |
+| Sonnet 5 | on | 0/3 | 3/3 | 6/6 |
+
+Decision: keep alwaysLoad on `ctx_execute`. It moved Opus to the sandbox on 2 of 3 large tasks, cost no over-routing on either model, and did not hurt Sonnet. It does not fix Sonnet: under-routing on Sonnet is handled by ADR-0008 enforcement (deny), not by tool loading. One run per cell; the live harness repeats this A/B before each release.
