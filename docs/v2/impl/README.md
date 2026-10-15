@@ -1,0 +1,36 @@
+# context-mode v2: implementation docs
+
+These files tell an implementing agent exactly what to write. The design is final. Do not make design choices; if a doc is silent, follow its "Assumptions" section.
+
+## Files
+
+| File | Module id | Owns |
+|---|---|---|
+| `00-architecture.md` | (all) | Source tree, module graph, shared types, constants, cross-module calls, runtime flows |
+| `01-contracts.md` | contracts | `src/core/contracts/` types and constants |
+| `02-store.md` | store | `src/core/store/`, `src/core/project/`, `src/core/journal/` |
+| `03-sandbox.md` | sandbox | `src/core/sandbox/` |
+| `04-tools-exec.md` | tools-exec | `ctx_execute`, `ctx_batch` |
+| `05-tools-index.md` | tools-index | `ctx_index`, `ctx_search`, chunker, fetch |
+| `06-tools-session.md` | tools-session | `ctx_resume`, `ctx_purge`, `ctx_stats`, compaction |
+| `07-tools-ops.md` | tools-ops | `ctx_doctor`, `ctx_upgrade` (install, upgrade, uninstall), `detectV1` |
+| `08-enforcement.md` | enforcement | shell parser, policy, subagent cases A/B/C |
+| `09-hooks.md` | hooks | hook entry, dispatch per canonical event |
+| `10-adapters.md` | adapters | `adapters/table.ts` and 10 decode/encode files |
+| `11-server.md` | server | MCP server entry, lifecycle, prompt delivery |
+| `12-plugins.md` | plugins | Pi and OpenCode 2 in-process entries |
+| `13-build-release.md` | build-release | esbuild, manifests, CI, `release.yml`, `/release` skill |
+| `14-tests.md` | tests | `e2e/` harness, GP1–GP11, live cases, KEEP-PASS runner |
+| `15-v1-transition.md` | v1-transition | R1–R8 of ADR-0017, removed-file check, README upgrade section |
+
+## How to use them
+
+1. Read `00-architecture.md` in full. It is the contract every module follows: names, types, constants, import rules.
+2. Read the file for your module. Read no other module file unless 00 lists a call into it.
+3. Implement in the TECH-SPEC §12 milestone order (M0 → M7). Inside a milestone, follow the step order in your module file.
+4. Write the E2E case first (ADR-0017, PRD P6). Each function names its GP row or live case id and its `covers` path.
+5. After each step, run:
+   - `node e2e/cases/run.mjs` (GP1–GP11, no model, free).
+   - `node e2e/live/run.mjs` (step mode: only cases whose `covers` match your changed files; `claude-sonnet-5 --effort low`).
+6. A step is done only when both are green. Do not delete v1 `tests/`; the 131 KEEP-PASS files must stay green (ADR-0003 r2, Q1).
+7. Never import `src/` from `e2e/` (GS4). Never add a constant outside `src/core/contracts/constants.ts`.

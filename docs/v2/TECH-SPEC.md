@@ -461,74 +461,74 @@ These are the current, decided values. Round-by-round history is in §13.
 
 Milestones M0–M7 cover the current scope: 10 agents, 9 tools, single DB, enforcement, compaction, doctor/upgrade, release, v1 retention. Exit of v2.0 = every GS row in §1.
 
-Each step is one PR. No step is done until its E2E gate runs green (ADR-0017). "Gate" names the GP case or live case and its `covers` paths (the live harness runs only the cases whose `covers` match the changed files, §6.9).
+Each step is one PR. No step is done until its E2E gate runs green (ADR-0017). "Gate" names the GP case or live case and its `covers` paths (the live harness runs only the cases whose `covers` match the changed files, §6.9). "Impl file" names the `docs/v2/impl/` file to follow for that step (ADR-0018).
 
 ### M0 — Scaffolding and open spikes
 
-| # | Step | ADRs | Gate |
-|---|---|---|---|
-| 1 | Build pipeline: bundle `server.bundle.mjs` and the hook entry from `src/`, inlining `src/prompt/instructions.md` and `src/prompt/tools/*.md` (§3.3); no `package.json` in the output | ADR-0002, ADR-0004 | GP1, a Claude-Code-only install case; `covers: ["src/prompt/", "scripts/build/"]` |
-| 2 | E2E harness skeleton: `e2e/harness/mcp-client.mjs`, `hook-runner.mjs`, `db-dump.mjs`, `normalize.mjs` (§4) | ADR-0003 | A harness-smoke GP1 case: spawn the bundle, send `initialize` + `tools/list`, assert the 9 tool names in order; `covers: ["e2e/harness/"]` |
-| 3 | GP fixture recorder: capture one real Claude Code 2.1.283 payload per hook event (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`) into `e2e/fixtures/claude-code/2.1.283/*.json` | ADR-0001, ADR-0003 | GP3 case replaying the fixture through `hook-runner.mjs`; asserts exit 0 and the native stdout shape; `covers: ["e2e/fixtures/claude-code/"]` |
-| 4 | CI matrix: `ci.yml` on 3 OS × Node 24.15.0 and current, running GP1–GP3 as they exist (§6.6) | ADR-0002 (S-NODE) | The CI run itself; `covers: [".github/workflows/ci.yml"]` |
-| 5 | KEEP-PASS runner: a CI job running the 131 KEEP-PASS files from `docs/v2/review/TEST-TRIAGE-r2.md` on vitest+TS, next to GP1–GP11 | ADR-0003 r2 | A local case asserting the job config lists exactly 131 files; `covers: ["docs/v2/review/TEST-TRIAGE-r2.md", "tests/"]` |
-| 6 | Open spikes: S-COPILOT, S-ZCODE, S-NAMES, S-SKILLS, S-CODEX, G25 (§9 table; each names its own milestone and the doc it updates) | varies, see §9 | Spike-specific; §9 |
+| # | Step | ADRs | Impl file | Gate |
+|---|---|---|---|---|
+| 1 | Build pipeline: bundle `server.bundle.mjs` and the hook entry from `src/`, inlining `src/prompt/instructions.md` and `src/prompt/tools/*.md` (§3.3); no `package.json` in the output | ADR-0002, ADR-0004 | `docs/v2/impl/13-build-release.md` | GP1, a Claude-Code-only install case; `covers: ["src/prompt/", "scripts/build/"]` |
+| 2 | E2E harness skeleton: `e2e/harness/mcp-client.mjs`, `hook-runner.mjs`, `db-dump.mjs`, `normalize.mjs` (§4) | ADR-0003 | `docs/v2/impl/14-tests.md` | A harness-smoke GP1 case: spawn the bundle, send `initialize` + `tools/list`, assert the 9 tool names in order; `covers: ["e2e/harness/"]` |
+| 3 | GP fixture recorder: capture one real Claude Code 2.1.283 payload per hook event (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`) into `e2e/fixtures/claude-code/2.1.283/*.json` | ADR-0001, ADR-0003 | `docs/v2/impl/14-tests.md` | GP3 case replaying the fixture through `hook-runner.mjs`; asserts exit 0 and the native stdout shape; `covers: ["e2e/fixtures/claude-code/"]` |
+| 4 | CI matrix: `ci.yml` on 3 OS × Node 24.15.0 and current, running GP1–GP3 as they exist (§6.6) | ADR-0002 (S-NODE) | `docs/v2/impl/13-build-release.md` | The CI run itself; `covers: [".github/workflows/ci.yml"]` |
+| 5 | KEEP-PASS runner: a CI job running the 131 KEEP-PASS files from `docs/v2/review/TEST-TRIAGE-r2.md` on vitest+TS, next to GP1–GP11 | ADR-0003 r2 | `docs/v2/impl/14-tests.md` | A local case asserting the job config lists exactly 131 files; `covers: ["docs/v2/review/TEST-TRIAGE-r2.md", "tests/"]` |
+| 6 | Open spikes: S-COPILOT, S-ZCODE, S-NAMES, S-SKILLS, S-CODEX, G25 (§9 table; each names its own milestone and the doc it updates) | varies, see §9 | `docs/v2/impl/10-adapters.md` | Spike-specific; §9 |
 
 ### M1 — Single DB and storage
 
 Schema and migrations; the `#645` path resolver; `BEGIN IMMEDIATE` write rules; corruption rename; cleanup atomicity; WAL checkpoint-on-close.
 
-| ADRs | Gate |
-|---|---|
-| ADR-0002, ADR-0007 decision 4 | GP8 (concurrency), GP9 (lifecycle); `covers: ["src/storage/"]` |
+| ADRs | Impl file | Gate |
+|---|---|---|
+| ADR-0002, ADR-0007 decision 4 | `docs/v2/impl/01-contracts.md`, `docs/v2/impl/02-store.md` | GP8 (concurrency), GP9 (lifecycle); `covers: ["src/storage/"]` |
 
 ### M2 — MCP surface and prompt delivery
 
 The 9-tool `tools/list` surface; `instructions.md` + per-tool descriptions, inlined and linted; `alwaysLoad` on `ctx_execute`; dual 2026-07-28 / 2025-xx serving. S-COPILOT, S-SKILLS and the ZCode instructions row of S-ZCODE close here.
 
-| ADRs | Gate |
-|---|---|
-| ADR-0004, ADR-0005, ADR-0006, ADR-0007 | GP1, GP2; `covers: ["src/prompt/", "src/server.ts"]` |
+| ADRs | Impl file | Gate |
+|---|---|---|
+| ADR-0004, ADR-0005, ADR-0006, ADR-0007 | `docs/v2/impl/11-server.md` | GP1, GP2; `covers: ["src/prompt/", "src/server.ts"]` |
 
 ### M3 — Enforcement and subagent protection
 
 The shell parser (lexer + recursive descent); curl/wget/build-tool deny with rewrite; user `permissions.deny`; case A/B/C subagent output budget. S-NAMES and the ZCode case-A row of S-ZCODE close here; G25 closes here (hooks exist to test).
 
-| ADRs | Gate |
-|---|---|
-| ADR-0008, ADR-0016 | GP3; `covers: ["src/hooks/", "src/adapters/"]` |
+| ADRs | Impl file | Gate |
+|---|---|---|
+| ADR-0008, ADR-0016 | `docs/v2/impl/08-enforcement.md`, `docs/v2/impl/09-hooks.md` | GP3; `covers: ["src/hooks/", "src/adapters/"]` |
 
 ### M4 — Compaction and memory
 
 Journal write path; candidate selection; budgeted greedy render; per-agent delivery.
 
-| ADRs | Gate |
-|---|---|
-| ADR-0009 | GP6; `covers: ["src/compaction/"]` |
+| ADRs | Impl file | Gate |
+|---|---|---|
+| ADR-0009 | `docs/v2/impl/06-tools-session.md` | GP6; `covers: ["src/compaction/"]` |
 
 ### M5 — Doctor, upgrade and v1 cleanup
 
 `ctx_doctor` D1–D10; `ctx_upgrade` install/upgrade/uninstall; `detectV1` per agent.
 
-| ADRs | Gate |
-|---|---|
-| ADR-0010, ADR-0011 | GP11; `covers: ["src/doctor/", "src/upgrade/"]` |
+| ADRs | Impl file | Gate |
+|---|---|---|
+| ADR-0010, ADR-0011 | `docs/v2/impl/07-tools-ops.md` | GP11; `covers: ["src/doctor/", "src/upgrade/"]` |
 
 ### M6 — Release automation and issue intake
 
 Branches (`main`/`v2`/`release`); the `/release` skill; `release.yml`; issue forms and the typed debug report; README and repo cleanup.
 
-| ADRs | Gate |
-|---|---|
-| ADR-0011, ADR-0013, ADR-0014, ADR-0015 | The full keyless harness run (§6.9) plus a release-staging smoke install; `covers: [".github/", ".claude/skills/release/", "README.md"]` |
+| ADRs | Impl file | Gate |
+|---|---|---|
+| ADR-0011, ADR-0013, ADR-0014, ADR-0015 | `docs/v2/impl/13-build-release.md` | The full keyless harness run (§6.9) plus a release-staging smoke install; `covers: [".github/", ".claude/skills/release/", "README.md"]` |
 
 ### M7 — v1 retention and v2.0 release
 
 R1–R8 of ADR-0017; the v1-migration live case set; final doc sign-off.
 
-| ADRs | Gate |
-|---|---|
-| ADR-0017 | Every GS row in §1 |
+| ADRs | Impl file | Gate |
+|---|---|---|
+| ADR-0017 | `docs/v2/impl/15-v1-transition.md` | Every GS row in §1 |
 
 ## 13. Changes
 

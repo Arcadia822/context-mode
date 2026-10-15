@@ -333,6 +333,10 @@ Every milestone names its own E2E gate (ADR-0017): no milestone's work counts as
 - **M6 Docs and README.** Gate: `lint.mjs` passes and the README stays under its line cap.
 - **M7 Release and close-out.** Run the full live set (§15), rehearse the v1-migration case (§14), close every issue and PR with its outcome. Gate: every exit criterion in TECH-SPEC §1 holds.
 
+## 18a. Implementation specification
+
+The module structure, dependency rules, constants, and per-module file map for implementers live in [`docs/v2/impl/README.md`](docs/v2/impl/README.md), under [ADR-0018](docs/v2/adr/0018-implementation-architecture.md). Start there before writing code for any milestone above.
+
 ## 19. Changes
 
 - 2026-10-13: dropped the v1.x line (fixes land only in v2); no npm, no CLI, no skills beyond the 3 commands; Antigravity/agy removed; v2.0 scope fixed at 10 agents.

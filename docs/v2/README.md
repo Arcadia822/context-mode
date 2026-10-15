@@ -15,7 +15,8 @@ This is the map. Start here, then follow the links.
 |---|---|
 | [`PRD-v2.md`](../../PRD-v2.md) | The product plan. |
 | [`TECH-SPEC.md`](TECH-SPEC.md) | The build spec: test strategy, prompt delivery, tool names per agent, open spikes, decisions. |
-| `adr/0001`–`0017` | One decision each. Table below. |
+| `adr/0001`–`0018` | One decision each. Table below. |
+| [`docs/v2/impl/`](impl/README.md) | Per-module implementation files for `src/`: exact paths, signatures, pseudocode, constants. Binding under ADR-0018. |
 | [`review/DECISIONS-r3.md`](review/DECISIONS-r3.md) | Owner answers to the round-3 open questions (Q1–Q24). |
 | [`review/DECISIONS-r4.md`](review/DECISIONS-r4.md) | Round-4 fixes, one row per root cause, merged from 4 reviewers. |
 | `review/` (other files) | Round outputs: `REVIEW-r2/r3/r4a.md`, `BOTTLENECKS-r3/r4.md`, `ISSUE-OUTCOMES-r2/r3/r4.md`, `TEST-TRIAGE-r2.md`, `OWNER-QUESTIONS-r3/r4.md`, raw data under `review/out/`. |
@@ -43,6 +44,7 @@ This is the map. Start here, then follow the links.
 | 0015 | README outline and the file-deletion list for repo cleanup. | Accepted |
 | 0016 | A subagent must never receive a large tool output either. | Accepted as a requirement; mechanism proposed |
 | 0017 | An E2E case at every step, on `claude-sonnet-5 --effort low`; v1 users keep a working setup through the switch. | Accepted |
+| 0018 | One architecture contract (`docs/v2/impl/00-architecture.md`), one file per module; implementers follow `docs/v2/impl/` file by file. | Accepted |
 
 ## 3. Agents (10)
 
