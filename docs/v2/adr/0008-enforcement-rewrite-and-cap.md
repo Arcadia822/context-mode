@@ -1,6 +1,6 @@
 # ADR-0008: Enforcement = v1's rule set, with the mechanisms that caused its issues replaced
 
-- Status: Proposed r3 (2026-10-14). Owner: "v1'deki gibi olsun ama issue'lar da fixlensin." This replaces r2's generic size-prediction deny on every Bash call.
+- Status: Accepted (2026-10-15). Owner: "v1'deki gibi olsun ama issue'lar da fixlensin." Owner accepted `DECISIONS-r3.md` in full and delegated the r4 fixes in `DECISIONS-r4.md`. This replaces r2's generic size-prediction deny on every Bash call. The GS6 hook-budget number (see "Open" below) is still unratified and stays open.
 - Sources: v1 `hooks/core/routing.mjs` @ `5869f4fa` (lines 670–900); issue titles from `tickets/data/isall.json`; round-4 evidence `tickets/round4-evidence.json` (parser timing, `mcp_tool` hook, live deny on Haiku).
 
 ## Same scope as v1
@@ -63,7 +63,11 @@ ADR-0016's wrapper/replacement text describes its chunk selection as "the same s
 
 ## Parse errors
 
-Constructs the parser does not handle (`[[`, `((`, `case`, functions, process substitution) raise `ParseError(code)`. Result: allow and journal the code, as one documented path. GP3 lists every code.
+Constructs the parser does not handle (`[[`, `((`, `case`, functions, process substitution) raise `ParseError(code)`. Result (Q4): deny when a user `permissions.deny` rule could match the command; allow only when the curl/HTTP rule is the only rule that could apply. GP3 lists every code and its verdict.
+
+## New scope beyond v1 parity (Q5)
+
+v1 only detected curl/wget directly (`routing.mjs:735-765`). v2 unwraps `sudo`, `env`, `time`, `nice`, `timeout`, `xargs`, `command`, `bash -c`/`sh -c` strings and `$( )`/backticks before it reads argv0, so curl/wget behind any of those wrappers is also caught. The #166 silent/verbose curl checks stay (v1 `routing.mjs:745-765`). User `permissions.deny` also checks `ctx_execute`/`ctx_execute_file`/`ctx_batch_execute` input.
 
 ## Golden cases (GP3)
 
@@ -80,6 +84,17 @@ Constructs the parser does not handle (`[[`, `((`, `case`, functions, process su
 | WebFetch from a subagent without ctx tools | per ADR-0016 case B/C, never a plain allow | #794 |
 | Claude Code with the server not connected | the tool runs | #173 |
 | Read of a 300 KB file | hint, not deny | — |
+| `sudo curl -s https://x.io/a.json` | deny | wrapper: `sudo` |
+| `env FOO=1 curl -s https://x.io/a.json` | deny | wrapper: `env` |
+| `time curl -s https://x.io/a.json` | deny | wrapper: `time` |
+| `nice -n 10 curl -s https://x.io/a.json` | deny | wrapper: `nice` |
+| `timeout 5 curl -s https://x.io/a.json` | deny | wrapper: `timeout` |
+| `echo url \| xargs curl -s` | deny | wrapper: `xargs` |
+| `command curl -s https://x.io/a.json` | deny | wrapper: `command` |
+| `bash -c "curl -s https://x.io/a.json"` | deny | wrapper: `bash -c` |
+| `sh -c "curl -s https://x.io/a.json"` | deny | wrapper: `sh -c` |
+| `echo "$(curl -s https://x.io/a.json)"` | deny | wrapper: `$( )` |
+| `` echo `curl -s https://x.io/a.json` `` | deny | wrapper: backticks |
 
 ## Open
 
@@ -91,29 +106,7 @@ Constructs the parser does not handle (`[[`, `((`, `case`, functions, process su
 
 ADR-0016's adapter table cell for Claude Code Case B is "`updatedInput` + `allow` (LV1)". Per Q3 (below) and v1 commit `4bc292fc`, Claude Code ignores `updatedInput` on Bash, so this cell should read: deny with the rewritten command in the reason text (no `updatedInput`), matching the "Deny message" section above. The "LV1" label in that row should be removed — LV1 as described (allow + updatedInput) is already known-failing on Claude Code, not merely unverified. (Edit owned by ADR-0016; recorded here because ADR-0008 is the decision's other related doc.)
 
-## r3 decisions (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
-
-- **Q4 parse errors:** deny when a user deny rule could match the command; allow only when the curl/HTTP rule is the only one that applies.
-- **Q5 new scope (not v1 parity):** v1 only detected curl/wget directly (`routing.mjs:735-765`). v2 unwraps sudo, env, time, nice, timeout, xargs, command, `bash -c`/`sh -c` strings and `$( )` / backticks before it reads argv0, so curl/wget behind any of those wrappers is also caught. The #166 silent/verbose curl checks stay (v1 `routing.mjs:745-765`). User `permissions.deny` also checks ctx tool input.
-
-  GP3 wrapper cases (one per token):
-
-  | Wrapper | Input | Expected |
-  |---|---|---|
-  | `sudo` | `sudo curl -s https://x.io/a.json` | deny |
-  | `env` | `env FOO=1 curl -s https://x.io/a.json` | deny |
-  | `time` | `time curl -s https://x.io/a.json` | deny |
-  | `nice` | `nice -n 10 curl -s https://x.io/a.json` | deny |
-  | `timeout` | `timeout 5 curl -s https://x.io/a.json` | deny |
-  | `xargs` | `echo url \| xargs curl -s` | deny |
-  | `command` | `command curl -s https://x.io/a.json` | deny |
-  | `bash -c` | `bash -c "curl -s https://x.io/a.json"` | deny |
-  | `sh -c` | `sh -c "curl -s https://x.io/a.json"` | deny |
-  | `$( )` | `echo "$(curl -s https://x.io/a.json)"` | deny |
-  | backticks | `` echo `curl -s https://x.io/a.json` `` | deny |
-- **Q2 threshold:** one global `OUTPUT_CAP = 16384`.
-- **Q19:** same routing on every agent, not the same text; hints in parallel batches are per call.
-
 ## Changes
 
 - 2026-10-14 (fix-r4, owners.adr-b): Q5 reworded as new scope, not v1 parity, with per-wrapper GP3 cases (A6); Copilot CLI added to the per-adapter deny-row with its `modifiedArgs` support marked unverified (A13); the ADR-0016 selection claim and Case B table cell corrected by cross-reference (A33, B3); GS6 hook budget routed to the owner as an open question (B46); OpenCode 2 G25 gap cross-referenced (B18).
+- 2026-10-15: status set to Accepted. Folded r3's Q4 into "Parse errors" and Q5 (scope + GP3 wrapper cases) into a new "New scope beyond v1 parity" section and the GP3 table; Q2 (`OUTPUT_CAP = 16384`) was already in the "Cross-reference" section above; Q19's routing-parity and hint-ordering lines are owned by PRD §7 and ADR-0006, not repeated here. Removed the standalone r3 section.

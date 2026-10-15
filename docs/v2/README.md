@@ -1,153 +1,107 @@
-# context-mode v2 — working notes (status 2026-10-13)
+# context-mode v2 — entry point for implementers (status: ready for implementation, 2026-10-15)
 
-Main plan: [`../../PRD-v2.md`](../../PRD-v2.md). Where this file and the PRD differ, this file is newer (§ "Changes after the PRD").
+This is the map. Start here, then follow the links.
 
-Each statement is marked:
-- **[V]** verified: source, docs or benchmark, with a link to the spike file
-- **[D]** decision made by Mert
-- **[O]** open
+## 1. Status
 
-## 1. Evidence files
+- v2 is ready for implementation. The owner accepted `DECISIONS-r3.md` in full ("doğru, tamamı ok") and delegated the r4 fixes in `DECISIONS-r4.md`. All 17 ADRs are Accepted (one, ADR-0016, is Accepted as a requirement; its mechanism stays Proposed until live checks LV8–LV10 pass).
+- Three spikes are closed: S-NODE, S-TIMEOUT, and the ADR-0006 re-probe (`tickets/spikes-r5/`).
+- Five spikes stay open and gate specific milestones (§9 below).
+- No work starts on `main`. `v2` work happens on its own branch; `main` stays frozen until release (ADR-0011).
 
-| File | Content |
+## 2. Doc map
+
+| Doc | What it is |
 |---|---|
-| `tickets/v2-issue-map.md` (+ `map-I0..I3`, `map-P0..P3`) | 173 issues + 178 PRs, each classed A/B/C/D/Q/M, B rows carry a Given/When/Then test |
-| `tickets/spike-project-source.md` | project dir source per agent |
-| `tickets/spike-distribution.md`, `spike-distribution-verified.md` | git/no-npm install + update per agent (Codex CLI tested live) |
-| `tickets/spike-hooks-verified.md` | 4 canonical hooks × 11 agents |
-| `tickets/verify-single-db.md` | node:sqlite busy, #985 root cause, WAL benchmark, hook cost, upgrade, metrics |
+| [`PRD-v2.md`](../../PRD-v2.md) | The product plan. |
+| [`TECH-SPEC.md`](TECH-SPEC.md) | The build spec: test strategy, prompt delivery, tool names per agent, open spikes, decisions. |
+| `adr/0001`–`0017` | One decision each. Table below. |
+| [`review/DECISIONS-r3.md`](review/DECISIONS-r3.md) | Owner answers to the round-3 open questions (Q1–Q24). |
+| [`review/DECISIONS-r4.md`](review/DECISIONS-r4.md) | Round-4 fixes, one row per root cause, merged from 4 reviewers. |
+| `review/` (other files) | Round outputs: `REVIEW-r2/r3/r4a.md`, `BOTTLENECKS-r3/r4.md`, `ISSUE-OUTCOMES-r2/r3/r4.md`, `TEST-TRIAGE-r2.md`, `OWNER-QUESTIONS-r3/r4.md`, raw data under `review/out/`. |
+| `tickets/spikes-r5/` | Spike write-ups: `S-NODE.md`, `S-TIMEOUT.md`, `ADR-0006-reprobe.md`. |
+| `review/agent-issue-intake/` | The issue form and the rules an AI agent must follow to file one (ADR-0014). Proposed, needs an explicit owner accept before it merges to `main`. |
 
-## 2. Principles [D]
+### ADRs
 
-- No fallback chains: one path per behaviour.
-- Same code on every agent.
-- Claude Code's event model is the canonical contract, and adapters only translate.
-- KISS / YAGNI: no CLI, no npm. No feature skills beyond `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade` (§9).
+| ADR | Summary | Status |
+|---|---|---|
+| 0001 | Claude Code is the reference contract; other agents adapt to it. | Accepted |
+| 0002 | One `context.db` per project; git-only distribution, no npm for v2. | Accepted |
+| 0003 | Three test layers: v1 KEEP-PASS unit tests, E2E-style GP1–GP11, E2E-live. | Accepted |
+| 0004 | No per-agent routing files or skills; routing ships as MCP `instructions` + tool descriptions. | Accepted |
+| 0005 | Prompt text follows plain, non-caps rules, checked by `lint.mjs`. | Accepted |
+| 0006 | On Claude Code, `ctx_execute` loads up front; routing text carries the rest. | Accepted (after re-probe) |
+| 0007 | Builds to MCP spec 2026-07-28; still serves older clients. | Accepted |
+| 0008 | Enforcement keeps v1's deny rules; replaces the mechanisms that caused v1's bugs. | Accepted (GS6 hook-budget number still open) |
+| 0009 | State after compaction: a deterministic, budgeted pick from the session journal. | Accepted |
+| 0010 | `ctx_doctor` and `ctx_upgrade` stay, rebuilt with one path per install mode. | Accepted |
+| 0011 | Branch, release, and v1-to-v2 transition order. | Accepted for the order; some agent rows still open |
+| 0012 | Live E2E runs keyless, in the owner's own logged-in Claude Code. | Accepted |
+| 0013 | One `/release` command drives the whole release. | Accepted |
+| 0014 | Issues only, no pull requests; `ctx_doctor` gives a typed debug report. | Accepted |
+| 0015 | README outline and the file-deletion list for repo cleanup. | Accepted |
+| 0016 | A subagent must never receive a large tool output either. | Accepted as a requirement; mechanism proposed |
+| 0017 | An E2E case at every step, on `claude-sonnet-5 --effort low`; v1 users keep a working setup through the switch. | Accepted |
 
-## 3. Scope
+## 3. Agents (10)
 
-- **[D]** v2.0.0 only. No v1.x line. All open PRs close at v2. Their fixes become B contract tests.
-- **[D]** v2.0 agents (10): Claude Code, Codex CLI, Gemini CLI, Qwen Code, Copilot CLI, VS Code Copilot, Kiro, ZCode, Pi, OpenCode 2.
-- **[D]** Removed agents:
-  - No git install: Cursor (git import is Teams/Enterprise only), Zed, JetBrains.
-  - Kimi: repo archived.
-  - Codex Desktop: closed source, unknown.
-  - OpenClaw: no project source.
-  - Antigravity/agy: no SessionStart, no UserPromptSubmit, no tool output in PostToolUse, #1206.
-  - OpenCode 1.x.
-- **[D]** Deferred past v2.0 GA (D14, new-adapter requests, no prior code history): DeepSeek Harness (#1258), Devin CLI (#957).
-- **[O]** OMP (G20): there are 8 issues in total, 5 of them open, all removed by v2 decisions. Recommended: remove.
-- **[D]** Statusline, `ctx_insight` and the pricing catalog are removed. Stats show bytes and tokens only.
+Claude Code, Codex CLI, Gemini CLI, Qwen Code, Copilot CLI, VS Code Copilot, Kiro, ZCode, Pi, OpenCode 2.
 
-## 4. Distribution — git only [V]
+## 4. Tools (9) and skills (3)
 
-- CI builds the bundles and pushes them to the `release` branch. The branch has no `package.json` and no `node_modules`. Install commands always name the ref.
-- Codex and Pi detect updates by **commit**, not by tag. So every release must be a new commit on `release`, and the Codex `plugin.json` version must go up. (spike-distribution-verified)
-- Pi runs npm whenever a `package.json` exists, so the `release` branch must not have one.
-- `pi update` runs `git clean -fdx`, so data lives outside the clone.
-- The launcher does not write a node path at install time. It resolves `node` lazily, with a liveness-guard lookup, each time a hook runs. This covers both #1090 (non-versioned node path goes stale) and #841 (mise/asdf/nvm node upgrades break hooks).
-- Install per agent:
+| Tool | Job |
+|---|---|
+| `ctx_execute` | Run shell, PowerShell, JS/TS or Python in the sandbox; absorbs `execute_file`. |
+| `ctx_batch` | Run several commands and a follow-up search in one call. |
+| `ctx_index` | Store content in the FTS5 store; absorbs `fetch_and_index`. |
+| `ctx_search` | Query the stored content. |
+| `ctx_resume` | Fetch one stored row by its key, whole. |
+| `ctx_stats` | Show usage numbers. |
+| `ctx_doctor` | Read-only health report, one row per check. |
+| `ctx_upgrade` | Update the install; also runs uninstall. |
+| `ctx_purge` | Clear stored data by scope. |
 
-  | Agent | Command |
-  |---|---|
-  | Claude Code | marketplace add + install, `ref: "release"` |
-  | Codex CLI | config.toml entry: `[mcp_servers.context-mode]` pointing at the `release` checkout (no plugin marketplace — avoids #1210, plugin spawns in a cache dir with no `${VAR}` expansion) |
-  | Gemini, Qwen | `extensions install <url> --ref release` |
-  | Pi | `pi install git:…@release` |
-  | OpenCode 2 | `git+https://…#release` |
-  | Copilot CLI | **[O]** `copilot plugin marketplace add o/r` then `copilot plugin install ctx@mkt`, not yet tested live |
-  | VS Code Copilot | **[O]** `/plugin install <git-repo>` in chat (Agent Plugins 1.0), not yet tested live |
-  | Kiro | **[O]** UI only: Powers → Add Custom Power → Import from GitHub, not yet tested live |
-  | ZCode | **[O]** UI: Settings → Plugins → Personal marketplace (Claude Code marketplace format), not yet tested live |
+Skills (user commands only, no routing text, `disable-model-invocation: true`): `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade`.
 
-  Codex `config.toml` entry:
-  ```toml
-  [mcp_servers.context-mode]
-  command = "node"
-  args = ["<checkout-path>/release/bin/context-mode.mjs", "mcp"]
-  ```
-  Update = re-run the checkout step and re-write this entry; there is no `plugin.json` version bump for Codex.
+## 5. Key numbers
 
-## 5. Project identity [V]
+| Name | Value | Source |
+|---|---|---|
+| Minimum Node | 24.15.0 | S-NODE spike, ADR-0002 |
+| `ctx_execute` default and max timeout | 600,000 ms | S-TIMEOUT spike, TECH-SPEC §10 Q8 |
+| Global output cap (`OUTPUT_CAP`) | 16,384 B | DECISIONS-r3 Q2, ADR-0008, ADR-0016 |
+| Compaction-state budget | 2,048 B (separate from `OUTPUT_CAP`) | ADR-0009 |
+| `ctx_doctor` report cap | 4,096 B | ADR-0014 |
+| `ctx_resume` cap | 2 KB | ADR-0009 |
+| Storage | One `context.db` per project (git common dir hash), node:sqlite, WAL | ADR-0002 |
+| Hook budget | 40 ms wall, measured in CI (G26). The command-hook CPU sub-budget (GS6) is still open | TECH-SPEC §7, ADR-0008 "Open" |
+| Tool description cap | 1,024 chars each; instructions ≤ 2,048 chars; descriptions + schemas ≤ 8,000 chars | ADR-0005 |
 
-- MCP `roots` is not used anywhere. It was deprecated in spec 2026-07-28 (SEP-2577).
-- Source per agent: an env var, `${workspaceFolder}` or the spawn cwd (spike-project-source).
-- Project key = git common dir, and every row stores its worktree.
+## 6. Running the keyless E2E-live harness
 
-## 6. Hooks — 4 canonical events [V, docs-only rows marked in the spike]
+No API key is ever used (ADR-0012).
 
-SessionStart · UserPromptSubmit · PreToolUse · PostToolUse. Each adapter maps every canonical event to one native event.
+```
+node e2e/live/run.mjs                 # step mode: only cases whose "covers" list touches your changed files
+node e2e/live/run.mjs --all           # the full case set — run this before a release
+node e2e/live/run.mjs --model claude-sonnet-5 --effort low --budget 0.25   # defaults shown; override if needed
+```
 
-PreCompact is not a 5th canonical event. Only 3 of 10 agents fire it (Gemini, Copilot CLI, VS Code), and even there it cannot inject context (ADR-0009): it only sets a pending flag that the next prompt hook reads once. All re-injection after compaction goes through SessionStart(source=compact) instead (§6 gaps, ADR-0009).
+- Default model is `claude-sonnet-5`, effort `low` — the lowest-cost setting (ADR-0017).
+- Step mode compares against `--base HEAD` by default; pass `--base <ref>` to diff against another ref.
+- Agents not installed or not logged in print `SKIPPED` with a reason; this is expected, not a failure.
+- `/release` runs `--all` before it starts the release workflow, and refuses to start after 3 skipped live runs in a row.
 
-Gaps:
-- Gemini, Pi and OpenCode 2 have no hint on allow. On these agents the hint lives only in the tool descriptions.
-- Gemini, Copilot CLI and VS Code do not fire SessionStart again after compaction.
-- Pi's `session_start` cannot inject context. Use `before_agent_start` instead.
-- OpenCode 2 has no SessionStart. Use the `context` hook with a once-per-session guard.
-- Gemini and Copilot CLI block the tool when a hook fails, so hooks must never throw.
-- Kiro does have SessionStart and PromptSubmit (docs dated 2026-10-10). My earlier claim that it lacked them was wrong.
+## 7. Open spikes
 
-**[O] G25:** whether hooks fire for MCP tools in Copilot CLI, ZCode, Pi and OpenCode 2. This needs a real model turn.
+| Spike | Question | Milestone |
+|---|---|---|
+| S-COPILOT | Does Copilot CLI pass `instructions` to the model? | M2 |
+| S-ZCODE | Same question on ZCode. | M2/M3 |
+| S-NAMES | Exact MCP tool names on Copilot CLI, Kiro, ZCode. | M3 |
+| S-SKILLS | Which agents expose a skill as a `/` command. | M2 |
+| S-CODEX | Are Codex's MCP tools deferred, and when does the model see them? | M0 (gates GP-LIVE-ROUTING for all 10 agents) |
+| G25 | Do hooks fire for MCP tools on Copilot CLI, ZCode, Pi and OpenCode 2? | Starts M0, closes M3, gates release |
 
-## 7. Storage — one DB per project
-
-`~/.context-mode/projects/<git-common-dir-hash>/context.db`, with tables `events`, `sources`, `chunks` (FTS5) and `meta`. Every row has `session_id`, `worktree` and `agent`.
-
-Benchmark results (verify-single-db) [V]:
-- node:sqlite `timeout` sleeps and does not spin: a 2.5 s wait used about 4 ms of CPU. The wait still blocks the JS thread.
-- **#985 root cause: our own `withRetry` busy loop in `src/db-base.ts:446`.** It was not better-sqlite3 or Bun. v2 deletes this loop.
-- With 8 writers, 4 FTS readers and a 20 MB indexer: 0 busy errors, integrity OK, write p99 7–24 ms.
-  - Rule: every write starts with `BEGIN IMMEDIATE`.
-  - Index writes go in chunks of about 1 MB.
-- Hook cost: Node startup is about 28–37 ms of CPU, and the insert adds about 1 ms. A JSONL append is not cheaper.
-
-Open:
-- **[O] G21:** single `context.db`. Recommended: yes.
-- **[D] G26 (2026-10-13):** hook budget 40 ms, measured in CI. 20 ms is impossible without a daemon.
-
-## 8. Scopes (worktree sharing) [D-pending]
-
-- Identity and stats: repo level (#744).
-- Search default: `worktree` (#1185). Wider: `project`. Narrower: `session`. Inside any scope, the current session ranks first (#895).
-- Resume: one agent session.
-
-## 9. Tools [D]
-
-9 tools: `ctx_execute` (absorbs `execute_file`), `ctx_batch`, `ctx_index` (absorbs `fetch_and_index`), `ctx_search`, `ctx_resume`, `ctx_stats`, `ctx_doctor`, `ctx_upgrade`, `ctx_purge` (ADR-0010).
-
-`ctx_doctor` and `ctx_upgrade` stay, rebuilt for v2: read-only checks, one path per update mode, no fallback. Uninstall is a mode of `ctx_upgrade` (`mode: uninstall`). 3 user commands wrap these as skills: `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade` (disable-model-invocation, each calls one matching tool). Other errors explain the fix in one line, no separate CLI.
-
-## 10. Migration from v1 [V facts, O plan]
-
-Facts:
-- Plugin users track main, and main ships 7 bundles. `ref:"release"` reaches them only after a version bump and a user update, because auto-update is off by default.
-- `npm deprecate` shows its warning only on a fresh download. The README tells users to install globally in 19 places and with npx in 1. Global users will not see the warning.
-- v1 writes hook and MCP entries into each agent's config. It does not auto-write CLAUDE.md or AGENTS.md. v1 data lives in `<agentConfigDir>/context-mode/sessions`.
-
-**[O] G22:** the order is version bump → marketplace `ref:"release"` → docs and release note → `npm deprecate`. Each outward step needs separate approval.
-
-## 11. Usage metrics [V]
-
-- GitHub traffic API, 14-day window: 406,880 clones, 46,327 unique cloners.
-- The releases have no assets.
-- Marketplace install counts: not checked.
-
-**[O] G23:** a weekly CI job stores the traffic numbers.
-
-## 12. Open for next session
-
-- G20 OMP → removed (2026-10-14)
-- G21 single DB → yes (2026-10-14)
-- G22 migration order → approved (2026-10-14)
-- G23 metrics job → approved (2026-10-14)
-- G25 model-turn hook test
-- G26 hook budget → 40 ms (2026-10-13)
-- Confirm the `worktree` search default
-- Codex hook timeout key (read from source, no login needed)
-- Memory (cm-memory) quality review
-- Clean up the superseded lines in PRD-v2.md
-
-## Changes
-
-2026-10-15: tools back to 9 (ctx_doctor, ctx_upgrade restored, A1); Codex install moved to a config.toml MCP entry (A2); launcher node path resolved lazily per hook run, not at install time (A12); PreCompact confirmed not a canonical event (B27); install rows added for Copilot CLI, VS Code Copilot, Kiro, ZCode, all [O] (B42); skills line narrowed to the 3 shipped command skills (B43); DeepSeek Harness and Devin CLI marked deferred past GA (I2-2).
+S-NODE, S-TIMEOUT and the ADR-0006 re-probe are closed; see `tickets/spikes-r5/`.

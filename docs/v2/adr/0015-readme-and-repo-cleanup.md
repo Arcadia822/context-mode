@@ -1,6 +1,6 @@
 # ADR-0015: v2 README outline and repo cleanup
 
-- Status: Proposed (2026-10-14)
+- Status: Accepted (2026-10-15). Owner accepted `DECISIONS-r3.md` in full and delegated the r4 fixes in `DECISIONS-r4.md`.
 - Evidence: workflow `wf_8bf44d89-dc5`, topics `readme` and `unnecessary-files`. Raw output: `tickets/round5-evidence.json`. Classifier script: `/tmp/wf5/classify2.js`.
 
 ## README (written last, D16)
@@ -13,7 +13,7 @@ Target length is about 165 lines, with a CI cap of 200. Written in English.
 | 2 | Callout | 4 | "v2 installs from git, not npm. Coming from v1? See Upgrading from v1." |
 | 3 | What it does | 12 | the problem in 3 lines, then 3 bullets: sandbox tools, one index per project with search, state after compaction |
 | 4 | `## Install` | 28 | Keep this exact heading: the npm deprecate message links `#install`. A 10-row table: Agent, Command, Guide. **A row gets a command only after a live install test on that agent passes.** Until then it says "see guide" |
-| 5 | Upgrading from v1 | 22 | Steps in ADR-0011 order, done in one sitting. Explains that v1 Codex, Copilot and VS Code hooks call the global binary and fail until `/ctx-upgrade` runs |
+| 5 | Upgrading from v1 | 22 | Steps in ADR-0011 order, done in one sitting. Explains that v1 Codex, Copilot and VS Code hooks call the global binary and fail until `/ctx-upgrade` runs. Includes a v1-feature → v2 table (each removed feature names why and what replaces it) and the exact per-agent rollback command (ADR-0017 R5/R7) |
 | 6 | Tools | 13 | 9 rows, one line each, no byte claims |
 | 7 | Commands | 7 | `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade` |
 | 8 | How it works | 12 | 4 hooks + MCP; one DB per project; hard deny by size (ADR-0008); state after compaction (ADR-0009) |
@@ -47,7 +47,7 @@ Largest items deleted:
 - 14 of 15 scripts: heal, postinstall, ctx-debug, version-sync, drift, tier2-smoke, openclaw …
 - `src/cli.ts`, `pricing.ts`, `model-prices.json`, `sibling-mcp.ts`, `plugin-cache-integrity.ts` (pending the git-log re-check above), `flood-guard.ts`, and 25 removed-agent adapter files. Call-rate throttling on `ctx_search` is dropped for v2, not replaced: `flood-guard.ts`'s single global counter would re-trip on legitimate fan-out from the 10 concurrent subagents v2 now allows (replaying #769). A GP case must assert N concurrent subagents calling `ctx_search` legitimately is never blocked.
 - the v1 `docs/adr/0001-0004`, whose numbers clash with the v2 ADRs, plus the `kimi-code`, `openclaw` and `jetbrains` docs
-- workflows: `openclaw-e2e.yml`, `update-stats.yml`, `tier2-e2e-smoke.yml` (it uses an API key), `bundle.yml`
+- workflows: `openclaw-e2e.yml`, `update-stats.yml`, `tier2-e2e-smoke.yml` (uses an API key; replaced by the keyless harness, ADR-0012, not kept — Q15), `bundle.yml`
 
 ### Order on `v2`
 
@@ -66,11 +66,7 @@ Before deleting any `src/**/*.ts` file (not configs or build artifacts), run `gi
 
 Decided 2026-10-14: deleted completely. It is not moved to another repo.
 
-## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
-
-- Q15: `tier2-e2e-smoke.yml` is replaced by the keyless harness (ADR-0012), not kept.
-- ADR-0017 R5/R7: the README gets a v1 → v2 feature table and a per-agent rollback command.
-
 ## Changes
 
 r4 fix pass: added the pre-deletion `git log --follow` check for `src/**/*.ts` files, and stated explicitly that `flood-guard.ts`'s throttle is dropped (not replaced) for v2, with the reason and the required GP case.
+2026-10-15: status set to Accepted. Folded r3's Q15 into the workflows deletion line and ADR-0017 R5/R7 into README row 5 above; removed the standalone r3 section.

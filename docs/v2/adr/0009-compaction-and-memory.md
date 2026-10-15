@@ -1,6 +1,6 @@
 # ADR-0009: State after compaction = budgeted greedy selection over the session journal
 
-- Status: Proposed r2 (2026-10-14). It replaces r1. The owner asked for an algorithm based on best practice.
+- Status: Accepted (2026-10-15). It replaces r1. The owner asked for an algorithm based on best practice, accepted `DECISIONS-r3.md` in full, and delegated the r4 fixes in `DECISIONS-r4.md`.
 - Evidence: workflow `wf_5b7e35b3-72f`, topic `compaction-algorithm`: 19 findings verified, 2 unverified, 1 refuted. Raw output: `tickets/round4-evidence.json`. Prototype: `/tmp/wf4/sk/`.
 
 ## Best practice (sources)
@@ -74,7 +74,7 @@ score  = w · decay · bonus
 
 ### 4. Selection: budgeted lazy greedy (knapsack by score/size)
 
-- Budget **B = 2,048 UTF-8 bytes**: 5× under Claude Code's 10,000-char spill limit.
+- Budget **B = 2,048 UTF-8 bytes**: 5× under Claude Code's 10,000-char spill limit. This is the compaction-state budget only, separate from the global `OUTPUT_CAP = 16,384` B used elsewhere (ADR-0008, ADR-0016; Q2).
 - `ratio = score · 0.7^k / bytes`, where k = lines already taken from that section. This decaying gain keeps the sections mixed.
 - Take items in ratio order. An item that does not fit is skipped, and smaller ones may still fit.
 - An item over 640 B is never cut. It becomes a pointer line: `#<seq> (<bytes> B) ctx_resume(seq:<seq>)`.
@@ -101,7 +101,7 @@ more: ctx_search(queries:[…], scope:"session")
 | Claude Code, Codex, Qwen, ZCode | computed inside SessionStart(compact). No PreCompact hook, no precomputing |
 | Gemini, Copilot CLI, VS Code | the compaction hook writes `meta('pending_compact:'+sid)`. The next prompt hook runs `DELETE … RETURNING` in a `BEGIN IMMEDIATE` transaction, so the injection happens exactly once |
 | Pi | `session_compact` flag, then `before_agent_start`, once |
-| OpenCode 2 | live test first (r1 notes still apply) |
+| OpenCode 2 | live test first (r1 notes still apply); delivered once, through a channel that keeps the prompt cache stable (Q12) |
 | Kiro | not supported — no compaction signal of any kind; documented as a known gap for Q20+ (live test showed no `SessionStart(compact)` signal and no usable `PreCompact` substitute) |
 
 Qwen sits in the `SessionStart(compact)` row above, not a separate "no PreCompact hook" row: Qwen does have a `PreCompact` hook, but it fires too early to carry enough state for the Gemini/Copilot CLI/VS Code pending-flag pattern, so `SessionStart(compact)` stays the delivery path for Qwen. This is confirmed, not an open question.
@@ -126,11 +126,7 @@ Qwen sits in the `SessionStart(compact)` row above, not a separate "no PreCompac
 
 - Hook budget: the whole SessionStart process is 48.6 ms p95, of which bare Node is 45.6 ms. See ADR-0008 "Open".
 
-## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
-
-- Q12: on OpenCode and Pi the state block is delivered once, through a channel that keeps the prompt cache stable.
-- Q2: unrelated to the 2,048 B state budget here; the global output cap is 16,384 B.
-
 ## Changes
 
 - 2026-10-14 (fix-r4, owners.adr-b): added the single journal write path, §0 (A4); added the byte-identical-per-turn rule (A49); scoped the "only re-injection point" claim to Claude Code/Codex/Qwen/ZCode and named the Gemini/Copilot CLI/VS Code second path (B26); resolved Kiro as unsupported with a documented gap, and clarified Qwen's delivery path (B12, B23).
+- 2026-10-15: status set to Accepted. Folded r3's Q12 into the OpenCode 2 delivery row and Q2 into the budget line in §4; removed the standalone r3 section.

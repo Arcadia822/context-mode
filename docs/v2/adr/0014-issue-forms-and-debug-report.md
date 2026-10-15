@@ -1,6 +1,6 @@
 # ADR-0014: Issues only, with a typed `ctx_doctor` debug report; no pull requests
 
-- Status: Proposed (2026-10-14). Owner: "PR istemiyorum; issue için v2'de çok iyi debug output; v1'de bunlar çalışmıyor".
+- Status: Accepted (2026-10-15). Owner: "PR istemiyorum; issue için v2'de çok iyi debug output; v1'de bunlar çalışmıyor". Owner accepted `DECISIONS-r3.md` Q18 (maximum debug data, only secrets stripped) in full.
 - Evidence: workflow `wf_5b7e35b3-72f`, topic `templates-debug`. Raw output: `tickets/round4-evidence.json`. Tested drafts: `/tmp/wf4/sk/gh/{bug,config,feature}.yml`.
 
 ## Why v1 debug output fails
@@ -44,6 +44,7 @@ The `v1_leftover_1..8`, `hook_error_1..5` and `check_d1..d10` keys must match `i
 - Raw paths, env values, config values, file bodies, error messages and command lines cannot appear in this typed block; only typed facts about them pass through (for example `has_space`, `non_ascii`, `max_len` for a path, not the path text). Per Q18, the free-text sections the agent writes itself (`What happened`, `Expected`, `Steps`) may still carry real path text, logs, and transcript excerpts — only secrets are stripped there.
 - Error codes come from a closed enum in `src/errors.ts`.
 - `issue-intake.mjs` also runs a substring scan (no regex) over `Summary`/`What happened`/`Steps` for known secret prefixes (`github_pat_`, `sk-`, `TOKEN=`) and for path markers (`/Users/`, `/home/`, `C:\`), flagging a match for the fix comment rather than blocking the issue.
+- The reporter is an AI agent (owner rule). It must send the full `ctx_doctor` report, paths, logs, versions, hook and deny journal rows, the steps, and transcript excerpts of the failing turns. Only secrets are removed: tokens, keys, `.env` values, Authorization headers. The intake files that encode this rule are in `docs/v2/review/agent-issue-intake/` (`AGENT_ISSUE.md`, `BODY-FORMAT.md`, `DO-NOT-SEND.md`, `VALIDATION.md`, `issue-intake.yml` plus scripts); they must match this rule.
 
 ### 4. Storage
 
@@ -81,10 +82,7 @@ GP11 runs as a pure-function golden test with no key. It seeds secrets (`TOKEN=�
 
 The local harness (ADR-0012) also checks that the block reaches the model byte for byte, and checks the degraded start with `node:sqlite` blocked.
 
-## r3 decision Q18 (2026-10-14): maximum debug data, only secrets stripped
-
-The reporter is an AI agent (owner rule). It must send: the full `ctx_doctor` report, paths, logs, versions, hook and deny journal rows, the steps, and transcript excerpts of the failing turns. Only secrets are removed: tokens, keys, `.env` values, Authorization headers. The intake files are in `docs/v2/review/agent-issue-intake/` (AGENT_ISSUE.md, BODY-FORMAT.md, DO-NOT-SEND.md, VALIDATION.md, issue-intake.yml + scripts); they must match this rule.
-
 ## Changes
 
 r4 fix pass: rewrote §3's redaction row and the intake files to state the Q18 rule directly (paths/logs/command output allowed in free text, only secrets stripped) instead of carrying the old v1-style "nothing raw" wording as a superseded footnote; added the `issue-intake.mjs` substring scan and the `ALLOWED_KEYS` match requirement.
+2026-10-15: status set to Accepted; folded the r3 Q18 section (maximum debug data, only secrets stripped, and the intake-file list) into §3 above and removed the standalone r3 section.

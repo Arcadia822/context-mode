@@ -1,6 +1,6 @@
 # ADR-0004: No routing skills and no per-agent instruction files; prompts ship as MCP server instructions + tool descriptions
 
-- Status: Proposed (2026-10-14). The user asked on 2026-10-14 for no skill file per adapter. Open details: Q2, Q10 and Q11 in TECH-SPEC §10 (Q7, Pi's plugin mechanism, is resolved: `before_agent_start`).
+- Status: Accepted (2026-10-15). Owner asked on 2026-10-14 for no skill file per adapter, and accepted the r3/r4 fixes in `DECISIONS-r3.md`/`DECISIONS-r4.md`. TECH-SPEC §10 Q2 and Q10 are now decided; Q11 (all 10 agents release-gated by GP-LIVE-ROUTING) stays open, pending the S-CODEX spike. Q7, Pi's plugin mechanism, is resolved: `before_agent_start`.
 - Related: TECH-SPEC §3 · ADR-0005 · ADR-0006
 
 ## Context

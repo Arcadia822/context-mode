@@ -1,6 +1,6 @@
 # ADR-0005: Prompt rules for current Claude models (Opus family), enforced by lint
 
-- Status: Proposed (2026-10-14). Budget numbers: Q5 in TECH-SPEC §10.
+- Status: Accepted (2026-10-15). Owner accepted `DECISIONS-r3.md` in full. Budget numbers: Q5 in TECH-SPEC §10, now decided.
 - Related: TECH-SPEC §3.4–§3.6 · ADR-0004 · `docs/v2/prompt/drafts.md`
 
 ## Context
@@ -54,6 +54,8 @@ Every prompt text (instructions and tool descriptions) follows these rules. CI l
 | PR12: tool names are bare (`ctx_execute`), never host-prefixed (TECH-SPEC §3.8) | `mcp__?…ctx_`, `plugin_…ctx_`, `context-mode__ctx_` = 0 |
 | PR11: every `ctx_*` name in a text exists in `tools/list` | exact |
 
+The "no regex" principle (PRD) covers runtime code only; CI tools such as `lint.mjs` may use regex (Q17).
+
 ## Verification
 
 - The lint is a step of GP2.
@@ -64,7 +66,7 @@ Every prompt text (instructions and tool descriptions) follows these rules. CI l
 
 - **Keep emphasis but shorten it.** Rejected: the guide names emphasis itself as the cause of overtriggering.
 
-## r3 decision (2026-10-14, `docs/v2/review/DECISIONS-r3.md`)
+## Changes
 
-- Q13: 1,024 chars per tool description, enforced by lint.
-- Q17: the no-regex rule covers runtime code only; `lint.mjs` may use regex.
+- r3 (`DECISIONS-r3.md`): ratified PR7's 1,024-char-per-description cap as Q13; added the Q17 CI-tooling carve-out for regex, folded into the Decision table above.
+- 2026-10-15: status set to Accepted; removed the standalone r3 section now that Q13 and Q17 are in the body.

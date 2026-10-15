@@ -1,7 +1,7 @@
 # context-mode v2: Technical Specification (golden state)
 
-- Status: DRAFT r2, 2026-10-14. It replaces r1 from the same day; §11 lists what changed.
-- Decisions: `docs/v2/README.md` · ADRs: `docs/v2/adr/0001`–`0006` · Prompt texts: `docs/v2/prompt/drafts.md` · Prompt lint: `docs/v2/prompt/lint.mjs`
+- Status: Ready for implementation r3, 2026-10-15. Replaces DRAFT r2 (2026-10-14); the final "Changes" section lists what changed, round by round.
+- Decisions: `docs/v2/README.md` · ADRs: `docs/v2/adr/0001`–`0017` · Review: `docs/v2/review/DECISIONS-r3.md`, `docs/v2/review/DECISIONS-r4.md` · Prompt texts: `docs/v2/prompt/drafts.md` · Prompt lint: `docs/v2/prompt/lint.mjs`
 - Tags:
   - **[V]** verified; the source is cited next to it
   - **[U]** unverified; it must be checked before the milestone named next to it
@@ -47,17 +47,9 @@ v2.0.0 is released only when **all** of these hold. Each one is checked by a mac
 
 - **[D] Agents (10):** Claude Code, Codex CLI, Gemini CLI, Qwen Code, Copilot CLI, VS Code Copilot, Kiro, ZCode, Pi, OpenCode 2.
 - **[D] Removed:** agy (PRD §15.5), OMP (G20), Cursor, JetBrains, Zed, Kimi, Kilo, OpenClaw, OpenCode 1.x, Codex Desktop.
-- **[D]** One `context.db` per project (G21, ADR-0002). Git-only distribution, with no CLI and no skills (G12–G14, G22).
+- **[D]** One `context.db` per project (G21, ADR-0002). No CLI and no npm step for users; git-only distribution (G12–G14, G22). Users get 3 command skills (`/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade`) plus this repo's own `/release` skill (not shipped to users); `ctx_doctor` and `ctx_upgrade` are MCP tools, not CLI commands (ADR-0004, ADR-0010).
 
-PRD lines this spec supersedes. They are kept in the PRD for history.
-
-| PRD line | Superseded by |
-|---|---|
-| §6 "≤ 20 ms CPU", E6 | G26: 40 ms |
-| §7 "Removed as tools → CLI only"; E9 uninstall; E16 `doctor --report`; E19 `doctor --fix`; G4 old text | G12–G14: no CLI. Errors explain the fix in one line inside the tool result |
-| §13 contract tests as `test/contract/<n>.test.ts`; "adapter conformance" | ADR-0003 and §6 here |
-| §14 M3 list (Cursor, Kimi, JetBrains, agy, Zed) | §2 here |
-| §10 E3 / §7: `ctx_search` default `project` | conflicts with README §8 (`worktree`, #1185) → Q6 |
+The PRD was rewritten on 2026-10-15 to match this spec; no PRD line is superseded.
 
 ### 1a. M0: table ownership (ADR-0002)
 
@@ -289,10 +281,11 @@ Proposed test runner: `node:test`. The tests run against built `.mjs` files, so 
 
 | Layer | Runs | Model | Deterministic | Where |
 |---|---|---|---|---|
-| E2E-style (GP1–GP10) | every PR, 3 OS | none | yes | `e2e/cases` |
-| E2E-live (GP-LIVE-ROUTING, GP-LIVE-HOOKS) | by hand (`workflow_dispatch`) + release-candidate tags `v*-rc*`; **no cron** | real | no; thresholds | `e2e/live` |
+| v1 KEEP-PASS (131 tests, ADR-0003 r2) | every PR, vitest+TS | none | yes | `tests/` (kept, mechanically ported import paths only) |
+| E2E-style (GP1–GP11) | every PR, 3 OS | none | yes | `e2e/cases` |
+| E2E-live (GP-LIVE-ROUTING, GP-LIVE-HOOKS) | after every implementation step (step scope) and the full set before `/release`, in the keyless harness on the owner's own logged-in Claude Code (ADR-0012, ADR-0017); never CI, never a key, **no cron** | real, `claude-sonnet-5 --effort low` (Opus and Haiku only for the ADR-0005/0006 routing A/B) | no; thresholds | `e2e/live` |
 
-Hard rule: no test imports `src/`. Inputs and outputs are processes, stdio, files and env only.
+Hard rule: no E2E test imports `src/`. The 131 KEEP-PASS tests keep their v1 `src/` imports (ADR-0003 r2) — that is the one named exception.
 
 ### 6.2 Golden paths
 
@@ -423,22 +416,22 @@ No API key for any test (owner rule). This supersedes the earlier CI-job-with-se
 
 ## 9. Open spikes
 
-| Spike | Question | Blocks |
-|---|---|---|
-| S-NODE | **Done 2026-10-15** (`tickets/spikes-r5/S-NODE.md`). Minimum **Node 24.15.0**: the lowest version that passed all four checks (node:sqlite with no flag, `timeout` sleeps on SQLITE_BUSY with < 2 ms CPU in a 2-process test, FTS5 compiled in, no ExperimentalWarning). 22.14.0 and 23.11.0 lack FTS5; 22.22.2 has FTS5 but prints the warning; 22.12.0 has no node:sqlite. Not tested: 24.0–24.14, 25.x. Install hard-fails with "Node ≥ 24.15.0 required, found <version>"; no fallback | ADR-0002, §6.6 |
-| S-TIMEOUT | **Done 2026-10-15** (`tickets/spikes-r5/S-TIMEOUT.md`). ctx_execute default = max = 600,000 ms; process tree killed by process group (Unix, `kill(-pid)`, SIGTERM then SIGKILL) and Job Object (Windows, `TerminateJobObject`) | §12, GP4 |
-| S-COPILOT | Does Copilot CLI pass `instructions` to the model? Test with a live probe like §3.1 | §3.7 |
-| S-ZCODE | Same probe on ZCode | §3.7, Q10 |
-| S-NAMES | Exact MCP tool names on Copilot CLI, Kiro, ZCode; live check of the Gemini `mcp_` finding | §3.8, GP3 |
-| S-SKILLS | Which agents expose a plugin/extension skill as a `/` command, and from which install path | §3.9 |
-| S-CODEX | Codex: are MCP tools deferred, and when does the namespace description become visible? | Q11 |
-| G25 | Do hooks fire for MCP tools on Copilot CLI, ZCode, Pi and OpenCode 2? | GS3 |
+| Spike | Question | Blocks | Milestone | Updates |
+|---|---|---|---|---|
+| S-NODE | **Done 2026-10-15** (`tickets/spikes-r5/S-NODE.md`). Minimum **Node 24.15.0**: the lowest version that passed all four checks (node:sqlite with no flag, `timeout` sleeps on SQLITE_BUSY with < 2 ms CPU in a 2-process test, FTS5 compiled in, no ExperimentalWarning). 22.14.0 and 23.11.0 lack FTS5; 22.22.2 has FTS5 but prints the warning; 22.12.0 has no node:sqlite. Not tested: 24.0–24.14, 25.x. Install hard-fails with "Node ≥ 24.15.0 required, found <version>"; no fallback | ADR-0002, §6.6 | Closed, M0 | ADR-0002, §6.6, §11 |
+| S-TIMEOUT | **Done 2026-10-15** (`tickets/spikes-r5/S-TIMEOUT.md`). ctx_execute default = max = 600,000 ms; process tree killed by process group (Unix, `kill(-pid)`, SIGTERM then SIGKILL) and Job Object (Windows, `TerminateJobObject`) | §11, GP4 | Closed, M0 | §11, GP4 |
+| S-COPILOT | Does Copilot CLI pass `instructions` to the model? Test with a live probe like §3.1 | §3.7 | M2 (only blocks the Copilot CLI instructions row) | §3.1, §3.7 |
+| S-ZCODE | Same probe on ZCode | §3.7, Q10 | M2/M3 (blocks the ZCode instructions row and the ADR-0016 ZCode case-A row) | §3.1, §3.7, ADR-0016 |
+| S-NAMES | Exact MCP tool names on Copilot CLI, Kiro, ZCode; live check of the Gemini `mcp_` finding | §3.8, GP3 | M3 (blocks the Copilot CLI/Kiro/ZCode rows of `adapters/table.ts` and GP3 hook matchers) | §3.8, `adapters/table.ts`, GP3 fixtures |
+| S-SKILLS | Which agents expose a plugin/extension skill as a `/` command, and from which install path | §3.9 | M2 (only blocks the per-agent skill-exposure row, not the skill content itself) | §3.9 |
+| S-CODEX | Codex: are MCP tools deferred, and when does the namespace description become visible? | Q11 | M0 (gates the GP-LIVE-ROUTING release scope for all 10 agents, not just Codex's adapter) | §10 Q11, ADR-0004 |
+| G25 | Do hooks fire for MCP tools on Copilot CLI, ZCode, Pi and OpenCode 2? | GS3 | Starts in M0 (harness case), closes in M3 (hooks are built) and gates release (GS3) | §1 GS3, ADR-0008 "Open" |
 
 ## 10. Decisions (all approved 2026-10-14)
 
 | Q | Decision | Status |
 |---|---|---|
-| Q1 | Delete v1 tests in one commit once GS1 holds and the ledger is complete | **[D]** |
+| Q1 | v1 unit tests stay until v2 passes the 131 KEEP-PASS tests (ADR-0003 r2); `tests/` is deleted in one commit only once v2 also passes that, GS1 holds and the ledger has no empty row | **[D]** |
 | Q2 | `ctx_execute` alwaysLoad on Claude Code (ADR-0006) | **[D]** |
 | Q3 | **User commands = 3 skills** `/ctx-stats`, `/ctx-doctor`, `/ctx-upgrade` (§3.9); no MCP prompts | **[D]** |
 | Q3b | **`ctx_doctor` and `ctx_upgrade` stay as tools, rebuilt for v2** (§3.11) | **[D]** |
@@ -447,36 +440,100 @@ No API key for any test (owner rule). This supersedes the earlier CI-job-with-se
 | Q5 | Budgets: instructions ≤ 2,048 chars; each description ≤ 1,024; descriptions + schemas ≤ 8,000 | **[D]** |
 | Q6 | **`ctx_search` default scope = `worktree`** (PRD E3 superseded) | **[D]** |
 | Q7 | Pi: same `instructions.md` bytes via `before_agent_start` | **[D]** |
-| Q8 | E2E-live only by hand + on RC tags, never nightly (owner, 2026-10-14) | **[D]** |
+| Q8 | E2E-live runs in the keyless harness (ADR-0012): every step on `claude-sonnet-5 --effort low`, the full case set before `/release`; never CI, never a key, never nightly | **[D]** |
 | Q9 | **Test runner = `node:test`**; matrix 3 OS × min/current Node, ≤ 10 min per OS | **[D]** |
 | Q10 | Kiro, ZCode: tool descriptions only | **[D]** |
 | Q11 | **All 10 agents, Codex included, are supported and release-gated by GP-LIVE-ROUTING**; no `AGENTS.md` | **[D, pending S-CODEX]** — the 37 `defer_loading` references under `codex-rs/core/src` (TECH-SPEC.md:86) are not yet read; the release gate does not rest on an unconfirmed deferred-loading assumption until S-CODEX closes |
 | Q12 | Prompt texts use bare tool names only (`ctx_execute`); host-prefixed names live only in the adapter name map (§3.8, PR12) | **[D]** |
 
-## 11. Changes from r1 (same day)
+## 11. Global constants and current rules
 
-| r1 said | r2 says | Why |
-|---|---|---|
-| "95 of 210 tests spawn processes" | 64 | r1 regex matched the bare word `spawn`; r2 regex is `child_process\|spawn\(\|execa\|execFile\|StdioClientTransport` |
-| "Tool descriptions are always sent" | false on Claude Code and Codex | live probes, §3.1 |
-| "6 agents unverified" for instructions | 3 verified more (Claude Code, Codex, VS Code), Copilot CLI probable, Kiro no, ZCode no evidence | §3.1 |
-| Budget "≤ 1,500 tokens" for instructions | ≤ 2,048 chars | Claude Code's cut is in chars |
-| "8 caps markers" in the routing skill | lint: 16 caps, 2 doubt, 10 tags, 103 quoted | `lint.mjs` with stated regexes |
-| GP-LIVE "20 commands" | §6.5 spec + a measured pilot (§3.6) | — |
+These are the current, decided values. Round-by-round history is in §13.
 
-## 12. r3 decisions applied (2026-10-14)
+- **Output cap:** one constant, `OUTPUT_CAP = 16384` bytes, for ctx tool replies, the ADR-0016 replace path and the ADR-0008 deny threshold. Not the 2 KB `ctx_resume` cap, not the 4 KB doctor cap.
+- **`ctx_execute` timeout:** default **600,000 ms**, max 600,000 ms (S-TIMEOUT, done; `tickets/spikes-r5/S-TIMEOUT.md`); longer work uses `background: true`. 600 s equals Claude Code's own Bash max (`BASH_MAX_TIMEOUT_MS`); a shorter fixed default was rejected because v1 `eea5877b` (#406) removed one for killing Gradle/Maven/SBT builds. Kills the whole process tree (Unix: process group; Windows: Job Object) and bounds the whole handler, batch included. Grep exit 1 is not an error. Languages: shell, powershell, javascript, typescript, python, plus any runtime found on PATH. Code echo is off by default; `summary` turns it back on. `ctx_search` rejects an unknown `query` field with `isError`.
+- **Node minimum:** 24.15.0 (S-NODE, done 2026-10-15; `tickets/spikes-r5/S-NODE.md`). CI matrix: 3 OS × Node 24.15.0 and current (26.x).
+- **Fetch:** honours `HTTP(S)_PROXY`/`NO_PROXY`, with an SSRF check on the resolved target host on every hop, including an allowlisted proxy.
+- **Tool descriptions:** ≤ 1,024 chars each, enforced by `lint.mjs`. "No regex" is a runtime-code rule only; CI tools such as `lint.mjs` may use regex.
+- **Tests:** ADR-0003 r2 + ADR-0017. The 131 v1 KEEP-PASS tests stay; every implementation step has a green E2E case; live E2E runs on `claude-sonnet-5 --effort low` in the keyless harness.
 
-Source: `docs/v2/review/DECISIONS-r3.md` (owner accepted all 19). These override older text in this file.
+## 12. Implementation plan
 
-- **Output cap:** one constant, `OUTPUT_CAP = 16384` bytes, for ctx tool replies, the ADR-0016 replace and the ADR-0008 deny threshold. Not the 2 KB `ctx_resume` cap, not the 4 KB doctor cap (Q2).
-- **ctx_execute:** default timeout **600,000 ms**, max 600,000 ms (S-TIMEOUT, `tickets/spikes-r5/S-TIMEOUT.md`); longer work uses `background: true`. 120 s was rejected: v1 eea5877b (#406) removed a fixed 30 s/60 s default because it killed Gradle/Maven/SBT builds, and 600 s equals Claude Code's own Bash max (`BASH_MAX_TIMEOUT_MS`). Measured on the v1 repo: cold install + typecheck + build + full test suite ≈ 86 s, the suite alone 55.5 s; kills the process tree (Windows Job Object) and bounds the whole handler incl. batch; grep exit 1 is not an error (Q8). `background` mode stays; languages: shell, powershell, javascript, typescript, python, plus runtimes found on PATH (Q9). Code echo removed, `summary` added; `ctx_search` rejects an unknown `query` field with `isError` (Q19).
-- **Node minimum:** 24.15.0 (S-NODE, measured 2026-10-15).
-- **Fetch:** honours `HTTP(S)_PROXY`/`NO_PROXY`, with an SSRF check on the target host (Q19).
-- **Tool descriptions:** 1,024 chars each, enforced by `lint.mjs` (Q13). "No regex" applies to runtime code only; CI tools may use regex (Q17).
-- **Tests:** ADR-0003 r2 + ADR-0017: v1 tests stay; an E2E case at every step; live E2E on `claude-sonnet-5 --effort low`.
+Milestones M0–M7 cover the current scope: 10 agents, 9 tools, single DB, enforcement, compaction, doctor/upgrade, release, v1 retention. Exit of v2.0 = every GS row in §1.
 
-## 13. Changes (r4 fix pass)
+Each step is one PR. No step is done until its E2E gate runs green (ADR-0017). "Gate" names the GP case or live case and its `covers` paths (the live harness runs only the cases whose `covers` match the changed files, §6.9).
 
-§6.9 rewritten from a CI-job-with-keys design to ADR-0012's keyless harness (no API key anywhere); GP1–GP11 rows and the doctor table gained the fix-r4 assertions (owners.techspec in `docs/v2/review/out/fix-r4/plan.json`); Q11 demoted to pending S-CODEX; S-NODE's hard-fail path stated; new §1a (table ownership) and §6.2a (contract/unit assertions) added.
+### M0 — Scaffolding and open spikes
 
-r5 spikes (2026-10-15): S-NODE (Node 24.15.0), S-TIMEOUT (600 s), ADR-0006 re-probe results; §3.6 L2/L3 ground truth corrected.
+| # | Step | ADRs | Gate |
+|---|---|---|---|
+| 1 | Build pipeline: bundle `server.bundle.mjs` and the hook entry from `src/`, inlining `src/prompt/instructions.md` and `src/prompt/tools/*.md` (§3.3); no `package.json` in the output | ADR-0002, ADR-0004 | GP1, a Claude-Code-only install case; `covers: ["src/prompt/", "scripts/build/"]` |
+| 2 | E2E harness skeleton: `e2e/harness/mcp-client.mjs`, `hook-runner.mjs`, `db-dump.mjs`, `normalize.mjs` (§4) | ADR-0003 | A harness-smoke GP1 case: spawn the bundle, send `initialize` + `tools/list`, assert the 9 tool names in order; `covers: ["e2e/harness/"]` |
+| 3 | GP fixture recorder: capture one real Claude Code 2.1.283 payload per hook event (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`) into `e2e/fixtures/claude-code/2.1.283/*.json` | ADR-0001, ADR-0003 | GP3 case replaying the fixture through `hook-runner.mjs`; asserts exit 0 and the native stdout shape; `covers: ["e2e/fixtures/claude-code/"]` |
+| 4 | CI matrix: `ci.yml` on 3 OS × Node 24.15.0 and current, running GP1–GP3 as they exist (§6.6) | ADR-0002 (S-NODE) | The CI run itself; `covers: [".github/workflows/ci.yml"]` |
+| 5 | KEEP-PASS runner: a CI job running the 131 KEEP-PASS files from `docs/v2/review/TEST-TRIAGE-r2.md` on vitest+TS, next to GP1–GP11 | ADR-0003 r2 | A local case asserting the job config lists exactly 131 files; `covers: ["docs/v2/review/TEST-TRIAGE-r2.md", "tests/"]` |
+| 6 | Open spikes: S-COPILOT, S-ZCODE, S-NAMES, S-SKILLS, S-CODEX, G25 (§9 table; each names its own milestone and the doc it updates) | varies, see §9 | Spike-specific; §9 |
+
+### M1 — Single DB and storage
+
+Schema and migrations; the `#645` path resolver; `BEGIN IMMEDIATE` write rules; corruption rename; cleanup atomicity; WAL checkpoint-on-close.
+
+| ADRs | Gate |
+|---|---|
+| ADR-0002, ADR-0007 decision 4 | GP8 (concurrency), GP9 (lifecycle); `covers: ["src/storage/"]` |
+
+### M2 — MCP surface and prompt delivery
+
+The 9-tool `tools/list` surface; `instructions.md` + per-tool descriptions, inlined and linted; `alwaysLoad` on `ctx_execute`; dual 2026-07-28 / 2025-xx serving. S-COPILOT, S-SKILLS and the ZCode instructions row of S-ZCODE close here.
+
+| ADRs | Gate |
+|---|---|
+| ADR-0004, ADR-0005, ADR-0006, ADR-0007 | GP1, GP2; `covers: ["src/prompt/", "src/server.ts"]` |
+
+### M3 — Enforcement and subagent protection
+
+The shell parser (lexer + recursive descent); curl/wget/build-tool deny with rewrite; user `permissions.deny`; case A/B/C subagent output budget. S-NAMES and the ZCode case-A row of S-ZCODE close here; G25 closes here (hooks exist to test).
+
+| ADRs | Gate |
+|---|---|
+| ADR-0008, ADR-0016 | GP3; `covers: ["src/hooks/", "src/adapters/"]` |
+
+### M4 — Compaction and memory
+
+Journal write path; candidate selection; budgeted greedy render; per-agent delivery.
+
+| ADRs | Gate |
+|---|---|
+| ADR-0009 | GP6; `covers: ["src/compaction/"]` |
+
+### M5 — Doctor, upgrade and v1 cleanup
+
+`ctx_doctor` D1–D10; `ctx_upgrade` install/upgrade/uninstall; `detectV1` per agent.
+
+| ADRs | Gate |
+|---|---|
+| ADR-0010, ADR-0011 | GP11; `covers: ["src/doctor/", "src/upgrade/"]` |
+
+### M6 — Release automation and issue intake
+
+Branches (`main`/`v2`/`release`); the `/release` skill; `release.yml`; issue forms and the typed debug report; README and repo cleanup.
+
+| ADRs | Gate |
+|---|---|
+| ADR-0011, ADR-0013, ADR-0014, ADR-0015 | The full keyless harness run (§6.9) plus a release-staging smoke install; `covers: [".github/", ".claude/skills/release/", "README.md"]` |
+
+### M7 — v1 retention and v2.0 release
+
+R1–R8 of ADR-0017; the v1-migration live case set; final doc sign-off.
+
+| ADRs | Gate |
+|---|---|
+| ADR-0017 | Every GS row in §1 |
+
+## 13. Changes
+
+- r1 → r2 (2026-10-14): "95 of 210 tests spawn processes" corrected to 64 (the r1 regex matched the bare word `spawn`; r2's is `child_process\|spawn\(\|execa\|execFile\|StdioClientTransport`); "tool descriptions are always sent" shown false on Claude Code and Codex by live probe (§3.1); instructions budget corrected from "≤ 1,500 tokens" to "≤ 2,048 chars" (Claude Code's cut is in chars); routing-skill lint counts corrected to 16 caps / 2 doubt / 10 tags / 103 quoted; GP-LIVE "20 commands" replaced by the §6.5 spec and the §3.6 pilot.
+- r3 (2026-10-14, `docs/v2/review/DECISIONS-r3.md`, all 19 accepted): set the constants now in §11 (output cap, `ctx_execute` timeout shape, tool-description budget, no-regex scope) and the ADR-0003 r2 test shape (v1 tests stay, E2E at every step, live E2E on Sonnet low); demoted Q11 to pending S-CODEX.
+- r4 fix pass: rewrote §6.9 from a CI-job-with-keys design to ADR-0012's keyless harness (no API key anywhere); added the fix-r4 assertions across GP1–GP11 and the doctor table; added §1a (table ownership) and §6.2a (contract/unit assertions); stated S-NODE's hard-fail path.
+- r5 (2026-10-15): closed S-NODE (Node 24.15.0) and S-TIMEOUT (600,000 ms) spikes; ran the ADR-0006 re-probe and corrected the §3.6 L2/L3 ground truth.
+- r3 of this spec (2026-10-15, this pass): header and ADR range brought current (0001–0017); §2 and §6.1 corrected to the no-CLI/3-skills and keyless-harness/KEEP-PASS design; §10 Q1 and Q8 corrected; §9 spikes given a milestone and a target doc each; §11–§13 restructured into one current-constants section, one implementation plan, and one final changelog.
