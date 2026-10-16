@@ -27,6 +27,8 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { describe, test, expect, beforeAll, afterAll, afterEach } from "vitest";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 import { classifyNonZeroExit } from "../../src/exit-classify.js";
 import { PolyglotExecutor } from "../../src/executor.js";
@@ -39,8 +41,10 @@ import {
   formatStorageDirectoryError,
   resolveContentStorageDir,
   resolveDefaultSessionDir,
+  resolveSessionDbPath,
   resolveSessionStorageDir,
   resolveStatsStorageDir,
+  SessionDB,
   StorageDirectoryError,
 } from "../../src/session/db.js";
 import { ROUTING_BLOCK } from "../../hooks/routing-block.mjs";
@@ -2394,13 +2398,6 @@ describe("Platform-aware session paths via adapter", () => {
     resolve(__dirname, "../../src/server.ts"),
     "utf-8",
   );
-
-  // ── Adapter is stored at startup ──
-  test("server stores detected adapter at startup", () => {
-    expect(serverSrc).toContain("let _detectedAdapter");
-    // main() must assign the adapter after detection
-    expect(serverSrc).toMatch(/_detectedAdapter\s*=\s*await\s+getAdapter/);
-  });
 
   // ── No hardcoded .claude in tool handlers ──
   test("ctx_purge has no hardcoded .claude path", () => {
@@ -6715,4 +6712,98 @@ describe("ctx_* MCP tool annotations (#846)", () => {
       expect(find(name)!.config.annotations!.readOnlyHint).toBe(false);
     }
   });
+});
+
+describe("MCP handshake platform binding", () => {
+  test.each([
+    { name: "OMP client overrides co-installed CLI markers", client: "omp-coding-agent", relocated: false },
+    { name: "unknown client retains explicit platform and storage overrides", client: "custom-mcp-client", relocated: true },
+  ])("$name", async ({ client: clientName, relocated }) => {
+    const scratch = mkdtempSync(join(tmpdir(), "ctx-handshake-"));
+    const home = join(scratch, "home");
+    const projectDir = join(scratch, "project");
+    const storageHome = relocated ? join(scratch, "relocated") : join(home, ".omp");
+    const sessionsDir = join(storageHome, "context-mode", "sessions");
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(sessionsDir, { recursive: true });
+    mkdirSync(join(home, ".local", "bin"), { recursive: true });
+    writeFileSync(join(home, ".local", "bin", "agy"), "");
+
+    const marker = "handshake_session_decision";
+    const decision = `Keep ${marker} in the OMP session history.`;
+    const db = new SessionDB({
+      dbPath: resolveSessionDbPath({ projectDir, sessionsDir }),
+    });
+    try {
+      db.ensureSession("omp-history-session", projectDir);
+      db.insertEvent("omp-history-session", {
+        type: "decision", category: "decision", data: decision, priority: 1,
+      });
+      expect(db.getEvents("omp-history-session").map(event => event.data)).toContain(decision);
+    } finally {
+      db.close();
+    }
+
+    // Do not inherit platform/storage selectors from the developer's shell.
+    const env: Record<string, string> = {
+      HOME: home,
+      USERPROFILE: home,
+      APPDATA: join(home, "AppData", "Roaming"),
+      LOCALAPPDATA: join(home, "AppData", "Local"),
+      XDG_CONFIG_HOME: join(home, ".config"),
+      CONTEXT_MODE_PROJECT_DIR: projectDir,
+    };
+    if (relocated) {
+      env.CONTEXT_MODE_PLATFORM = "omp";
+      env.CONTEXT_MODE_DATA_DIR = storageHome;
+    }
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [resolve(__dirname, "../../server.bundle.mjs")],
+      cwd: projectDir,
+      env,
+      stderr: "pipe",
+    });
+    let stderr = "";
+    transport.stderr?.on("data", chunk => { stderr += chunk.toString(); });
+    const start = transport.start.bind(transport);
+    transport.start = async () => {
+      await start();
+      // Delay initialize until the server has attached stdio. This makes
+      // startup fallback detection observable instead of relying on a race.
+      const sentinelDir = process.platform === "win32" ? tmpdir() : "/tmp";
+      await vi.waitFor(() => {
+        expect(existsSync(join(sentinelDir, `context-mode-mcp-ready-${transport.pid}`)), stderr).toBe(true);
+      }, { timeout: 10_000, interval: 20 });
+    };
+    const client = new Client({ name: clientName, version: "1.0.0" });
+    const call = async (name: string, args: Record<string, unknown>) => {
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError, JSON.stringify(result)).not.toBe(true);
+      return (result.content as Array<{ type: string; text?: string }>)
+        .filter(part => part.type === "text").map(part => part.text ?? "").join("\n");
+    };
+    try {
+      await client.connect(transport);
+      // Both requests may arrive while the adapter module is still loading.
+      const [history, executed] = await Promise.all([
+        call("ctx_search", { queries: [marker], sort: "timeline" }),
+        call("ctx_execute", { language: "javascript", code: 'console.log("sandbox-still-works")' }),
+      ]);
+      expect(history).toContain(decision);
+      expect(executed).toContain("sandbox-still-works");
+
+      const document = "Manual documentation remains searchable with manual_document_marker.";
+      await call("ctx_index", { content: document, source: "manual-document" });
+      expect(await call("ctx_search", { queries: ["manual_document_marker"] })).toContain(document);
+      const doctor = await call("ctx_doctor", {});
+      expect(doctor).toContain(`Storage sessions: ${sessionsDir}`);
+      expect(doctor).toContain(`Storage content: ${join(storageHome, "context-mode", "content")}`);
+      expect(existsSync(join(home, ".gemini", "context-mode"))).toBe(false);
+    } finally {
+      await client.close();
+      await transport.close();
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
