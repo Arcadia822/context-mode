@@ -64,7 +64,7 @@ import {
 } from "./search/ctx-search-schema.js";
 import { FloodGuard } from "./search/flood-guard.js";
 import { buildNodeCommand, type HookAdapter, type PlatformId, isInProcessPluginPlatform } from "./adapters/types.js";
-import { detectPlatform, getSessionDirSegments } from "./adapters/detect.js";
+import { detectPlatform, getAdapter, getSessionDirSegments } from "./adapters/detect.js";
 import { parseCodexContextModePluginRoot } from "./adapters/codex/index.js";
 import { getHookScriptPaths } from "./util/hook-config.js";
 import { stripJsonComments } from "./util/jsonc.js";
@@ -302,6 +302,7 @@ function wrapToolHandler(
     // emits no further inbound messages. Symmetric end in finally (success+error).
     noteRequestStart();
     try {
+      await ensurePlatformInitialized();
       return await handler(toolArgs);
     } catch (err) {
       const result = storageErrorResult(err);
@@ -527,26 +528,43 @@ function maybeIndexSessionEvents(store: ContentStore): void {
 // hardcoded configDir detection in tool handlers.
 
 let _detectedAdapter: HookAdapter | null = null;
+let _platformInitialization: Promise<void> | null = null;
 
-/**
- * Resolve the Claude Code config root, honoring `CLAUDE_CONFIG_DIR` (incl.
- * leading `~`) before falling back to `~/.claude`. Mirrors
- * `hooks/session-helpers.mjs::resolveConfigDir` and
- * `ClaudeCodeAdapter.getConfigDir` so the pre-detection path agrees with
- * hooks/adapter on where Claude Code session data lives. See issue #453.
- *
- * Issue #460 round-3: delegates to the canonical util so empty/whitespace
- * env values fall back instead of poisoning downstream `join()` calls.
- */
+function ensurePlatformInitialized(): Promise<void> {
+  // connect() only attaches stdio listeners; clientInfo arrives later.
+  // Share initialization with concurrent first tool calls so no handler opens
+  // storage using a fallback adapter while the handshake adapter is loading.
+  return _platformInitialization ??= (async () => {
+    try {
+      const clientInfo = server.server.getClientVersion();
+      const signal = detectPlatform(clientInfo ?? undefined);
+      _detectedAdapter = await getAdapter(signal.platform);
+      if (clientInfo) {
+        console.error(`MCP client: ${clientInfo.name} v${clientInfo.version} → ${signal.platform}`);
+      }
+    } catch { /* best effort — retain pre-detection fallback */ }
+
+    // Restore counters only after selecting the same storage root as tools.
+    try {
+      const restored = restoreSessionStats(getSessionDbPath());
+      if (restored) {
+        for (const [tool, count] of Object.entries(restored.calls)) {
+          sessionStats.calls[tool] = count;
+        }
+        for (const [tool, bytes] of Object.entries(restored.bytesReturned)) {
+          sessionStats.bytesReturned[tool] = bytes;
+        }
+        if (restored.sessionStart > 0) {
+          sessionStats.sessionStart = restored.sessionStart;
+        }
+      }
+    } catch { /* best effort — never block tools on stats restoration */ }
+  })();
+}
+
 async function getDiagnosticAdapter(): Promise<HookAdapter | null> {
-  if (_detectedAdapter) return _detectedAdapter;
-  try {
-    const { getAdapter } = await import("./adapters/detect.js");
-    const signal = detectPlatform();
-    return await getAdapter(signal.platform);
-  } catch {
-    return null;
-  }
+  await ensurePlatformInitialized();
+  return _detectedAdapter;
 }
 
 /**
@@ -1006,6 +1024,9 @@ function getStatsFilePath(): string {
 }
 
 function persistStats(): void {
+  // Idle or closing clients that never initialized must not create state in
+  // a co-installed host's fallback directory.
+  if (!_detectedAdapter) return;
   const now = Date.now();
   if (now - _lastStatsPersist < STATS_PERSIST_THROTTLE_MS) return;
   _lastStatsPersist = now;
@@ -5354,6 +5375,9 @@ async function main() {
   // Lifecycle guard: detect parent death + stdin close to prevent orphaned processes (#103)
   startLifecycleGuard({ onShutdown: () => gracefulShutdown() });
 
+  server.server.oninitialized = () => {
+    void ensurePlatformInitialized();
+  };
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
@@ -5376,39 +5400,6 @@ async function main() {
     try { writeFileSync(mcpSentinel, String(process.pid)); } catch { /* best effort */ }
   }, 30_000);
   sentinelRefresh.unref();
-
-  // Detect platform adapter — stored for platform-aware session paths
-  try {
-    const { detectPlatform, getAdapter } = await import("./adapters/detect.js");
-    const clientInfo = server.server.getClientVersion();
-    const signal = detectPlatform(clientInfo ?? undefined);
-    _detectedAdapter = await getAdapter(signal.platform);
-    if (clientInfo) {
-      console.error(`MCP client: ${clientInfo.name} v${clientInfo.version} → ${signal.platform}`);
-    }
-  } catch { /* best effort — _detectedAdapter stays null, falls back to .claude */ }
-
-  // Restore tool-call counters from SessionDB BEFORE the heartbeat fires
-  // so the very first persistStats() carries the prior PID's totals into
-  // the sidecar JSON the statusline reads. Otherwise `/ctx-upgrade` flashes
-  // `0 calls / $0.00` until the user makes another MCP tool call. Wrapped
-  // in try/catch — a stats-restore failure must never block server startup.
-  try {
-    const restored = restoreSessionStats(getSessionDbPath());
-    if (restored) {
-      for (const [tool, count] of Object.entries(restored.calls)) {
-        sessionStats.calls[tool] = count;
-      }
-      for (const [tool, bytes] of Object.entries(restored.bytesReturned)) {
-        sessionStats.bytesReturned[tool] = bytes;
-      }
-      // Anchor uptime_ms to the original session start so `/ctx-upgrade`
-      // doesn't reset the "session age" the statusline shows.
-      if (restored.sessionStart > 0) {
-        sessionStats.sessionStart = restored.sessionStart;
-      }
-    }
-  } catch { /* best effort — never block startup on a stats restore failure */ }
 
   // Non-blocking version check — result stored for trackResponse warnings.
   // First fetch at startup, then refresh every hour so long-running sessions
